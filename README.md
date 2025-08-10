@@ -68,22 +68,27 @@ A Chrome extension for automating Kick.com chat interactions with advanced voice
 
 ### Main Interface
 *Main automation interface with whitelist and auto-reply settings*
+
 ![AutoSend Tab](screenshots/AutoSend%20(1).png)
 
 ### Message Repeater
-![Responder Tab](screenshots/Responder%20(2).png)
 *Message repeater with interval controls and queue management*
+
+![Responder Tab](screenshots/Responder%20(2).png)
 
 ### Voice Selection
 *TTS voice selection with rotation modes and custom voice options*
+
 ![Voices Tab](screenshots/Voices%20(3).png)
 
 ### Theme Switching
 *Switch between Kick and FNV themes with different voice sets and visual styles*
+
 ![Commaflage Tab](screenshots/Commaflage%20(4).png)
 
 ### Advanced Settings
 *Advanced configuration options and statistics*
+
 ![Settings Tab](screenshots/Settings%20(5).png)
 
 ## Security & Privacy
