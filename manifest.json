@@ -1,0 +1,56 @@
+{
+    "manifest_version": 3,
+    "name": "Kick AutoSend",
+    "version": "2.0.0",
+    "description": "Advanced Kick chat automation with voice rotation, message repeater, and smart reply features for streamers and moderators",
+    "permissions": ["storage", "scripting", "activeTab"],
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'none'; frame-ancestors 'none';"
+    },
+    "host_permissions": [
+      "https://kick.com/*",
+      "https://*.kick.com/*"
+    ],
+        "action": {
+        "default_title": "Kick AutoSend",
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "assets/logo.png",
+            "32": "assets/logo.png",
+            "48": "assets/logo.png",
+            "128": "assets/logo.png"
+        }
+    },
+    "icons": {
+        "16": "assets/logo.png",
+        "32": "assets/logo.png",
+        "48": "assets/logo.png",
+        "128": "assets/logo.png"
+    },
+      "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/fnv.jpg", 
+        "assets/logo.png",
+        "utils/IntervalManager.js",
+        "utils/DOMCache.js", 
+        "core/SecurityValidator.js",
+        "core/StateManager.js"
+      ],
+      "matches": ["https://kick.com/*", "https://*.kick.com/*"]
+    }
+  ],
+    "background": {
+      "service_worker": "service_worker.js"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "https://kick.com/*",
+          "https://*.kick.com/*"
+        ],
+        "js": ["content.js"],
+        "run_at": "document_idle"
+      }
+    ]
+  }

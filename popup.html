@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kick Auto Sender</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 400px;
+      min-height: 480px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-color);
+      color: var(--text-color);
+      transition: all 0.3s ease;
+    }
+
+    /* Theme Variables - Kick Default */
+    :root {
+      --bg-color: #141517;
+      --text-color: #ffffff;
+      --primary-color: #53fc18;
+      --primary-dark: #45d314;
+      --secondary-bg: #1e1f22;
+      --border-color: #2a2b2e;
+      --accent-color: #00ccff;
+    }
+
+    [data-theme="fnv"] {
+      --bg-color: #1a1a1a;
+      --text-color: #ffffff;
+      --primary-color: #cc3333;
+      --primary-dark: #aa2222;
+      --secondary-bg: #2a2a2a;
+      --border-color: #444;
+      --accent-color: #7E24DB;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, var(--secondary-bg), #1a1b1e);
+      padding: 15px;
+      text-align: center;
+      color: var(--text-color);
+      font-weight: bold;
+      font-size: 18px;
+      position: relative;
+    }
+
+    [data-theme="fnv"] .header {
+      background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+      color: #000;
+    }
+
+    .theme-toggle {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 15px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--text-color);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255,255,255,0.2);
+      border-color: var(--primary-color);
+    }
+
+    [data-theme="fnv"] .theme-toggle {
+      background: rgba(0,0,0,0.2);
+      border-color: rgba(0,0,0,0.3);
+      color: #000;
+    }
+
+    [data-theme="fnv"] .theme-toggle:hover {
+      background: rgba(0,0,0,0.3);
+    }
+    
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      position: relative;
+    }
+
+    .header-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+    }
+
+    .master-toggle {
+      display: flex;
+      align-items: center;
+    }
+
+    /* Master toggle styling - enhanced visibility */
+    .master-toggle .switch input:checked + .slider {
+      background-color: #53fc18 !important;
+      border: 2px solid #32d916 !important;
+      box-shadow: 0 0 8px rgba(83, 252, 24, 0.5) !important;
+    }
+
+    .master-toggle .switch input:checked + .slider:before {
+      background-color: #fff !important;
+      border: 1px solid #32d916 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+    }
+
+    .master-toggle .switch input:not(:checked) + .slider {
+      background-color: #cc4444 !important;
+      border: 2px solid #994444 !important;
+      box-shadow: 0 0 8px rgba(204, 68, 68, 0.3) !important;
+    }
+
+    .master-toggle .switch input:not(:checked) + .slider:before {
+      background-color: #fff !important;
+      border: 1px solid #994444 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+    }
+
+    /* FNV theme adjustments for better visibility */
+    [data-theme="fnv"] .master-toggle .switch input:checked + .slider {
+      background-color: #53fc18 !important;
+      border: 3px solid #32d916 !important;
+      box-shadow: 0 0 15px rgba(83, 252, 24, 0.7) !important;
+    }
+
+    [data-theme="fnv"] .master-toggle .switch input:not(:checked) + .slider {
+      background-color: #cc4444 !important;
+      border: 3px solid #fff !important;
+      box-shadow: 0 0 15px rgba(204, 68, 68, 0.7) !important;
+    }
+    
+    .header-image {
+      width: 32px;
+      height: 32px;
+      transition: transform 0.3s ease;
+    }
+
+    [data-theme="fnv"] .header-image {
+      border-radius: 50%;
+      border: 2px solid #000;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .header-image:hover {
+      transform: scale(1.1) rotate(5deg);
+    }
+    
+    .header-emoji {
+      font-size: 32px;
+      line-height: 1;
+      transition: transform 0.3s ease;
+    }
+    
+    .header-emoji:hover {
+      transform: scale(1.1) rotate(5deg);
+    }
+    
+    .header-text {
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .tab-wrapper {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      justify-content: center;
+      position: relative;
+    }
+
+    .help-icon {
+      font-size: 12px;
+      color: #999;
+      cursor: help;
+      position: relative;
+      margin-left: 4px;
+      display: inline-block;
+    }
+
+    .help-icon::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.95);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 1000;
+      margin-bottom: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      max-width: 400px;
+      min-width: 200px;
+      text-align: left;
+      line-height: 1.4;
+    }
+
+    .help-icon:hover::after {
+      opacity: 1;
+    }
+
+    .tab-text {
+      font-size: 12px;
+      line-height: 1;
+      color: inherit;
+    }
+
+    .tab-indicator {
+      font-size: 12px;
+      line-height: 1;
+      transition: color 0.3s ease;
+    }
+
+    .tab-indicator.inactive {
+      color: #666;
+    }
+
+    .tab-indicator.active {
+      color: #00ff88; /* Bright green for better contrast */
+      text-shadow: 0 0 4px rgba(0, 255, 136, 0.8);
+    }
+
+    .tab-indicator.partial {
+      color: #ff9500;
+      text-shadow: 0 0 4px rgba(255, 149, 0, 0.8);
+    }
+
+    .tab-indicator.error {
+      color: #ff4444;
+      text-shadow: 0 0 4px rgba(255, 68, 68, 0.8);
+    }
+
+    /* Special contrast handling for active tabs */
+    .tab.active .tab-indicator.active {
+      color: #ffffff; /* White for maximum contrast on green background */
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .tab.active .tab-indicator.partial {
+      color: #000000; /* Black for contrast on green background */
+      text-shadow: 0 0 2px rgba(255, 149, 0, 0.8);
+    }
+
+    .tab.active .tab-indicator.error {
+      color: #000000; /* Black for contrast on green background */
+      text-shadow: 0 0 2px rgba(255, 68, 68, 0.8);
+    }
+
+    /* FNV theme uses the same colors as Kick Standard for consistency */
+    [data-theme="fnv"] .tab-indicator.active {
+      color: #00ff88; /* Same bright green as Kick Standard */
+      text-shadow: 0 0 4px rgba(0, 255, 136, 0.8);
+    }
+
+    [data-theme="fnv"] .tab.active .tab-indicator.active {
+      color: #ffffff; /* White for maximum contrast on red background */
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Tooltip styles */
+    .tab-indicator {
+      position: relative;
+      cursor: help;
+    }
+
+    .tab-indicator::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 1000;
+      margin-bottom: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .tab-indicator:hover::after {
+      opacity: 1;
+    }
+
+    /* Special handling for active tab indicators */
+    .tab.active .tab-indicator.active::after,
+    .tab.active .tab-indicator.partial::after,
+    .tab.active .tab-indicator.error::after {
+      background: rgba(255, 255, 255, 0.95);
+      color: #000;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    
+    .tabs {
+      display: flex;
+      background: var(--secondary-bg);
+      border-bottom: 2px solid var(--primary-color);
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 6px 2px;
+      text-align: center;
+      cursor: pointer;
+      background: var(--secondary-bg);
+      border: none;
+      color: #ccc;
+      font-size: 12px;
+      transition: all 0.3s;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .tab.active {
+      background: var(--primary-color);
+      color: #000;
+      font-weight: bold;
+    }
+    
+    .tab:hover:not(.active) {
+      background: #333;
+      color: #fff;
+    }
+    
+    .tab-content {
+      display: none;
+      padding: 12px;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .form-group {
+      margin-bottom: 12px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: var(--primary-color);
+    }
+    
+    .toggle-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .switch {
+      position: relative;
+      width: 40px;
+      height: 20px;
+    }
+    
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--border-color);
+      transition: 0.3s;
+      border-radius: 20px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: var(--primary-color);
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: #333;
+      color: #fff;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #53fc18;
+    }
+    
+    input::placeholder, textarea::placeholder {
+      color: #999;
+      opacity: 1;
+      font-style: italic;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.4;
+      letter-spacing: 0.01em;
+    }
+    
+    #repeaterMessage {
+      min-height: 80px;
+    }
+    
+    .char-counter {
+      text-align: right;
+      font-size: 12px;
+      color: #999;
+      margin-top: 5px;
+    }
+    
+    .char-counter.warning {
+      color: #ff9500;
+    }
+    
+    .char-counter.error {
+      color: #ff3333;
+    }
+    
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+      background: var(--secondary-bg);
+    }
+    
+    .voice-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+    }
+    
+    .voice-item input[type="checkbox"] {
+      width: auto;
+    }
+    
+    .btn {
+      background: var(--primary-color);
+      color: #000;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    
+    .btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+      background: #444;
+      color: #fff;
+    }
+    
+    .btn-secondary:hover {
+      background: #555;
+    }
+    
+    .status {
+      text-align: center;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 6px;
+      font-weight: bold;
+    }
+    
+    .status.success {
+      background: rgba(83, 252, 24, 0.2);
+      color: var(--primary-color);
+    }
+    
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .row > * {
+      flex: 1;
+    }
+    
+    .stats {
+      background: var(--secondary-bg);
+      border-radius: 6px;
+      padding: 10px;
+    }
+    
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    
+    .stats-value {
+      color: var(--primary-color);
+      font-weight: bold;
+    }
+
+    .repeater-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .mode-description {
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 8px;
+      padding: 6px;
+      background: var(--secondary-bg);
+      border-radius: 6px;
+      border-left: 3px solid var(--primary-color);
+    }
+
+    .queue-container {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--secondary-bg);
+      max-height: 300px;
+      overflow: hidden;
+    }
+
+    .queue-header {
+      display: grid;
+      grid-template-columns: 60px 70px 1fr 80px;
+      gap: 8px;
+      padding: 8px;
+      background: #333;
+      border-bottom: 1px solid #444;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+
+    .queue-list {
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .queue-item {
+      display: grid;
+      grid-template-columns: 60px 70px 1fr 80px;
+      gap: 8px;
+      padding: 8px;
+      border-bottom: 1px solid #333;
+      font-size: 11px;
+      transition: background-color 0.2s;
+    }
+
+    .queue-item:hover {
+      background: #333;
+    }
+
+    .queue-item:last-child {
+      border-bottom: none;
+    }
+
+    .queue-col {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-empty {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+      font-style: italic;
+    }
+
+    .status-pending {
+      color: #ff9500;
+    }
+
+    .status-sent {
+      color: var(--primary-color);
+    }
+
+    .status-failed {
+      color: #ff3333;
+    }
+
+    .status-queued {
+      color: #666;
+    }
+
+    .message-type-auto {
+      color: var(--primary-color);
+    }
+
+    .message-type-repeater {
+      color: #00bfff;
+    }
+
+    .queue-time {
+      font-size: 10px;
+      color: #999;
+    }
+
+    .preset-section {
+      margin: 15px 0;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--secondary-bg);
+      padding: 12px;
+    }
+
+    .preset-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .preset-header label {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+
+    .preset-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .preset-controls input {
+      width: 120px;
+      padding: 4px 8px;
+      font-size: 11px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #333;
+      color: white;
+    }
+
+    .btn-small {
+      padding: 4px 12px !important;
+      font-size: 11px !important;
+      min-height: unset !important;
+    }
+
+    .preset-list {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .preset-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      margin: 4px 0;
+      background: #333;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      transition: background-color 0.2s;
+    }
+
+    .preset-item:hover {
+      background: #404040;
+      border-color: #555;
+    }
+
+    .preset-content {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .preset-name {
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--primary-color);
+      margin-bottom: 2px;
+    }
+
+    .preset-message {
+      font-size: 10px;
+      color: #ccc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
+    .preset-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .preset-btn {
+      padding: 2px 6px;
+      font-size: 10px;
+      border: 1px solid #555;
+      border-radius: 3px;
+      background: #444;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: #555;
+    }
+
+    .preset-btn.delete {
+      background: #663333;
+      border-color: #994444;
+    }
+
+    .preset-btn.delete:hover {
+      background: #884444;
+    }
+
+    .preset-empty {
+      text-align: center;
+      padding: 15px;
+      color: #666;
+      font-style: italic;
+      font-size: 11px;
+    }
+
+    /* Extension disabled state */
+    .extension-disabled .tabs,
+    .extension-disabled .tab-content,
+    .extension-disabled #global-save-container {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .extension-disabled .master-toggle {
+      pointer-events: auto; /* Allow master toggle to still work */
+    }
+
+    .disabled-tab {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .disabled-tab:hover {
+      background: var(--tab-bg) !important;
+    }
+  </style>
+</head>
+<body data-theme="kick">
+  <div class="header">
+    <div class="header-content">
+      <div class="header-left">
+        <div class="master-toggle">
+          <label class="switch">
+            <input type="checkbox" id="masterEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="header-center">
+        <img id="headerImage" src="assets/logo.png" alt="Logo" class="header-image">
+        <span class="header-emoji" style="display: none;">⚡</span>
+        <span id="headerText" class="header-text">Kick AutoSend</span>
+      </div>
+      <div class="header-right">
+      </div>
+      <button class="theme-toggle" id="themeToggle">🔄 FNV</button>
+    </div>
+  </div>
+  
+  <div class="tabs">
+    <button class="tab active" data-tab="repeater">
+      <div class="tab-wrapper">
+        <span class="tab-text">AutoSend</span>
+        <span class="tab-indicator" id="repeater-indicator">●</span>
+      </div>
+    </button>
+    <button class="tab" data-tab="responder">
+      <div class="tab-wrapper">
+        <span class="tab-text">Responder</span>
+        <span class="tab-indicator" id="responder-indicator">●</span>
+      </div>
+    </button>
+    <button class="tab" data-tab="voices">
+      <div class="tab-wrapper">
+        <span class="tab-text">Voices</span>
+        <span class="tab-indicator" id="voices-indicator">●</span>
+      </div>
+    </button>
+    <button class="tab" data-tab="commandflage">
+      <div class="tab-wrapper">
+        <span class="tab-text">Commaflage</span>
+        <span class="tab-indicator" id="commandflage-indicator">●</span>
+      </div>
+    </button>
+    <button class="tab" data-tab="settings">
+      <div class="tab-wrapper">
+        <span class="tab-text">Settings</span>
+      </div>
+    </button>
+  </div>
+  
+  <!-- REPEATER TAB -->
+  <div class="tab-content active" id="repeater">
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="repeaterEnabled">
+        <span class="slider"></span>
+      </label>
+      <span>AutoSend Mode Enabled</span>
+      <span class="help-icon" data-tooltip="Automatically send messages at set intervals. Save presets for reuse.">?</span>
+    </div>
+    
+
+    
+    <div class="form-group">
+      <label for="repeaterMessage">Message Template:</label>
+      <textarea id="repeaterMessage" placeholder="!duke hello everyone! what's poppin?"></textarea>
+      <div class="char-counter" id="repeater-counter">0/150 characters</div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-header">
+        <label>Message Presets:</label>
+        <div class="preset-controls">
+          <input type="text" id="presetName" placeholder="Preset name..." maxlength="30">
+          <button class="btn btn-small" id="savePreset">Save</button>
+        </div>
+      </div>
+      <div class="preset-list" id="presetList">
+        <div class="preset-empty">No presets saved</div>
+      </div>
+    </div>
+    
+    <div class="row">
+      <div class="form-group">
+        <label for="interval">Interval (seconds):</label>
+        <input type="number" id="interval" min="10" max="3600" value="90">
+      </div>
+      <div class="form-group">
+        <label for="maxCount">Max Count (0 = ∞):</label>
+        <input type="number" id="maxCount" min="0" max="1000" value="0">
+      </div>
+    </div>
+    
+    <div class="repeater-controls">
+      <button class="btn" id="startRepeater">Save & Start</button>
+      <button class="btn btn-secondary" id="stopRepeater">Stop AutoSend</button>
+    </div>
+    
+    <div class="stats" id="repeaterStats" style="margin-top: 10px;">
+      <div class="stats-row">
+        <span>Next Message in:</span>
+        <span class="stats-value" id="nextMessage">--</span>
+      </div>
+      <div class="stats-row">
+        <span>Messages Left:</span>
+        <span class="stats-value" id="messagesLeft">--</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- RESPONDER TAB -->
+  <div class="tab-content" id="responder">
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="enabled">
+        <span class="slider"></span>
+      </label>
+      <span>Responder Enabled</span>
+      <span class="help-icon" data-tooltip="Resend messages of whitelisted non-subs when they start with a '!'">?</span>
+    </div>
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="responderAllowCommands">
+        <span class="slider"></span>
+      </label>
+      <span>Allow Command-Only Messages</span>
+      <span class="help-icon" data-tooltip="Enable to respond to messages like '!followage'. Disable to only respond to TTS messages.">?</span>
+    </div>
+    
+    <div class="form-group">
+      <label for="whitelist">Whitelisted Users (one per line):</label>
+      <textarea id="whitelist" placeholder="jawn&#10;jawnathan"></textarea>
+      <div class="char-counter" id="whitelist-counter">0 users</div>
+    </div>
+    
+    <div class="form-group">
+      <label for="customMessage">Custom Reply Message (optional):</label>
+      <input type="text" id="customMessage" placeholder="Leave empty to echo original message">
+      <div class="char-counter" id="message-counter">0/500 characters</div>
+      <div style="font-size: 11px; color: #999; margin-top: 3px;">
+        <strong>Empty:</strong> echoes original • <strong>With text:</strong> sends custom message
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label for="blacklistedWords">Blacklisted Words (comma-separated):</label>
+      <textarea id="blacklistedWords" placeholder="scam, shit, kill" rows="2"></textarea>
+      <div class="char-counter" id="blacklist-counter">0 words</div>
+      <div style="font-size: 11px; color: #999; margin-top: 3px;">
+        Messages containing these words will be ignored. Enter words separated by commas.
+      </div>
+    </div>
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="includeSubscribers">
+        <span class="slider"></span>
+      </label>
+      <span>Include Subscribers (ignore subscriber badge)</span>
+    </div>
+  </div>
+  
+  <!-- VOICES TAB -->
+  <div class="tab-content" id="voices">
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="voiceRotationRepeater">
+        <span class="slider"></span>
+      </label>
+      <span>Voice Rotation for AutoSend</span>
+      <span class="help-icon" data-tooltip="Auto-replace TTS voices in repeater messages">?</span>
+    </div>
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="voiceRotationResponder">
+        <span class="slider"></span>
+      </label>
+      <span>Voice Rotation for Responder</span>
+      <span class="help-icon" data-tooltip="Auto-replace TTS voices in auto-replied messages">?</span>
+    </div>
+    
+    <div class="form-group">
+      <label for="voiceMode">Rotation Mode:</label>
+      <select id="voiceMode">
+        <option value="random">Random</option>
+        <option value="sequential">Sequential</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label>Selected Voices:</label>
+      <div class="voice-grid" id="voiceGrid">
+        <!-- Voices will be populated by JavaScript -->
+      </div>
+    </div>
+    
+    <div class="row" style="margin-top: 15px;">
+      <button class="btn btn-secondary" id="selectAllVoices">Select All</button>
+      <button class="btn btn-secondary" id="clearAllVoices">Clear All</button>
+    </div>
+
+    <div class="form-group" style="margin-top: 20px;">
+      <label>Add Custom Voice:</label>
+      <div class="row">
+        <input type="text" id="customVoiceName" placeholder="Voice name (e.g., 'batman')" style="flex: 2;">
+        <button class="btn btn-small" id="addCustomVoice" style="flex: 1; margin-left: 10px;">Add Voice</button>
+      </div>
+      <div style="font-size: 11px; color: #999; margin-top: 3px;">
+        Add voices not in the default list. Will create commands like "!batman"
+      </div>
+    </div>
+  </div>
+  
+  <!-- COMMAFLAGE TAB -->
+  <div class="tab-content" id="commandflage">
+    
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="commandflageEnabled">
+        <span class="slider"></span>
+      </label>
+      <span>Commaflage Mode Enabled</span>
+      <span class="help-icon" data-tooltip="Send multiple commands in 3 sec. intervals">?</span>
+    </div>
+    
+    <div class="form-group">
+      <label for="commandflageCommands">Commands (comma-separated):</label>
+      <textarea id="commandflageCommands" placeholder="!commands, !voices, !followage" rows="3"></textarea>
+      <div class="char-counter" id="commands-counter">0 commands</div>
+      <div style="font-size: 11px; color: #999; margin-top: 3px;">
+        Enter commands with the "!" prefix. Commands will never repeat in the same round.
+      </div>
+    </div>
+
+    <div class="toggle-switch">
+      <label class="switch">
+        <input type="checkbox" id="randomizeCommands" checked>
+        <span class="slider"></span>
+      </label>
+      <span>Randomize command sequence</span>
+    </div>
+    
+    <div class="row">
+      <div class="form-group">
+        <label for="commandRounds">Rounds (0 = infinite):</label>
+        <input type="number" id="commandRounds" min="0" max="100" value="1">
+      </div>
+      <div class="form-group">
+        <label for="commandCount">Max Commands (0 = all):</label>
+        <input type="number" id="commandCount" min="0" max="1000" value="0">
+      </div>
+    </div>
+    
+    <div class="repeater-controls">
+      <button class="btn" id="startCommandflage">Save & Start</button>
+      <button class="btn btn-secondary" id="stopCommandflage">Stop Commaflage</button>
+    </div>
+    
+    <div class="stats" id="commandflageStats" style="display: none;">
+      <div class="stats-row">
+        <span>Commands Sent:</span>
+        <span class="stats-value" id="commandsSent">0</span>
+      </div>
+      <div class="stats-row">
+        <span>Current Round:</span>
+        <span class="stats-value" id="currentRound">1</span>
+      </div>
+      <div class="stats-row">
+        <span>Next Command:</span>
+        <span class="stats-value" id="nextCommand">--</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- SETTINGS TAB (Combined Advanced + Stats) -->
+  <div class="tab-content" id="settings">
+    
+    <!-- ADVANCED SETTINGS SECTION -->
+    <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
+      <h3 style="color: var(--primary-color); margin-bottom: 10px; font-size: 14px;">⚙️ Advanced Settings</h3>
+      <div class="toggle-switch">
+        <label class="switch">
+          <input type="checkbox" id="useAdvancedLimits">
+          <span class="slider"></span>
+        </label>
+        <span>Use Advanced Limits (override defaults)</span>
+      </div>
+      
+      <div class="form-group">
+        <label for="minDelay">Minimum Send Delay / User Cooldown (sec.):</label>
+        <input type="number" id="minDelay" min="30" max="300" value="90">
+        <div style="font-size: 11px; color: #999; margin-top: 3px;">
+          Default: 90 sec. Minimum time between messages. 
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="maxCharLimit">Maximum Message Characters:</label>
+        <input type="number" id="maxCharLimit" min="50" max="500" value="150">
+        <div style="font-size: 11px; color: #999; margin-top: 3px;">
+          Default: 150 char. Messages exceeding limit will have a <span style="color:#ff3333">red</span> warning.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="channelRestriction">Channel Restriction (optional):</label>
+        <input type="text" id="channelRestriction" placeholder="e.g., jawnstream (leave empty for all channels)">
+        <div style="font-size: 11px; color: #999; margin-top: 3px;">
+          Restrict extension to specific channel. Enter username only (no kick.com/)
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top: 15px;">
+        <button class="btn btn-secondary" id="exportSettings">Export Settings</button>
+        <button class="btn btn-secondary" id="importSettings">Import Settings</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display: none;">
+      
+      <div class="stats" style="margin-top: 15px;">
+        <div class="stats-row">
+          <span>Current Min Delay:</span>
+          <span class="stats-value" id="currentMinDelay">90s</span>
+        </div>
+        <div class="stats-row">
+          <span>Current Max Chars:</span>
+          <span class="stats-value" id="currentMaxChars">150</span>
+        </div>
+        <div class="stats-row">
+          <span>Blacklisted Words:</span>
+          <span class="stats-value" id="currentBlacklistCount">0</span>
+        </div>
+      </div>
+
+    </div>
+    
+    <!-- STATISTICS SECTION -->
+    <div>
+      <h3 style="color: var(--primary-color); margin-bottom: 10px; font-size: 14px;">📊 Extension Statistics</h3>
+      
+      <div class="stats">
+        <div class="stats-row">
+          <span>Auto-Replies Sent:</span>
+          <span class="stats-value" id="totalReplies">0</span>
+        </div>
+        <div class="stats-row">
+          <span>Messages Processed:</span>
+          <span class="stats-value" id="totalProcessed">0</span>
+        </div>
+        <div class="stats-row">
+          <span>AutoSend Messages:</span>
+          <span class="stats-value" id="totalRepeater">0</span>
+        </div>
+        <div class="stats-row">
+          <span>Timeouts Detected:</span>
+          <span class="stats-value" id="totalTimeouts">0</span>
+        </div>
+        <div class="stats-row">
+          <span>Bans Detected:</span>
+          <span class="stats-value" id="totalBans">0</span>
+        </div>
+        <div class="stats-row">
+          <span>Success Rate:</span>
+          <span class="stats-value" id="successRate">100%</span>
+        </div>
+      </div>
+
+      <div class="preset-section" style="margin-top: 15px;">
+        <div class="preset-header">
+          <label>Top 5 Presets by Usage:</label>
+        </div>
+        <div id="topPresets" class="preset-list" style="max-height: 140px;">
+          <div class="preset-empty">No preset usage data</div>
+        </div>
+      </div>
+      
+      <div class="row">
+        <button class="btn btn-secondary" id="resetStats">Reset Statistics</button>
+        <button class="btn btn-secondary" id="resetPresetStats">Reset Preset Usage</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="global-save-container">
+    <button class="btn" id="save" style="width: calc(100% - 24px); margin: 12px;">Save Settings</button>
+  </div>
+  
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
