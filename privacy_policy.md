@@ -1,6 +1,6 @@
 # Privacy Policy for Kick AutoSend
 
-**Last updated: January 2025**
+**Last updated: August 10, 2025**
 
 ## Overview
 
