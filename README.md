@@ -80,6 +80,7 @@ A Chrome extension for automating Kick.com chat interactions with advanced voice
 
 ### Theme Switching
 ![Commaflage Tab](screenshots/Commaflage%20(4).png)
+*Switch between Kick and FNV themes with different voice sets and visual styles*
 
 ### Advanced Settings
 ![Settings Tab](screenshots/Settings%20(5).png)
