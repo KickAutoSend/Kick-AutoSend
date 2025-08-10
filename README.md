@@ -1,5 +1,7 @@
 # Kick AutoSend
 
+![Kick AutoSend Promotional Image](screenshots/Large%20tile%20-%20Promo%20-%20920x680.png)
+
 A Chrome extension for automating Kick.com chat interactions with advanced voice rotation and message management features.
 
 ## Features
@@ -78,7 +80,6 @@ A Chrome extension for automating Kick.com chat interactions with advanced voice
 
 ### Theme Switching
 ![Commaflage Tab](screenshots/Commaflage%20(4).png)
-*Theme switching between Kick and FNV themes*
 
 ### Advanced Settings
 ![Settings Tab](screenshots/Settings%20(5).png)
