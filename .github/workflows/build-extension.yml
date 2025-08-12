@@ -1,0 +1,70 @@
+name: Build Chrome Extension
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Create extension package
+      run: |
+        # Create a clean build directory
+        mkdir -p dist
+        
+        # Copy all necessary files
+        cp manifest.json dist/
+        cp popup.html dist/
+        cp popup.js dist/
+        cp content.js dist/
+        cp service_worker.js dist/
+        cp -r assets dist/
+        cp -r core dist/
+        cp -r utils dist/
+        
+        # Create a timestamp for the build
+        echo "Build timestamp: $(date)" > dist/build-info.txt
+        echo "Git commit: ${{ github.sha }}" >> dist/build-info.txt
+        echo "Version: $(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json')).version)")" >> dist/build-info.txt
+        
+        # Create zip file for Chrome Web Store
+        cd dist
+        zip -r ../kick-autosend-v$(node -e "console.log(JSON.parse(require('fs').readFileSync('../manifest.json')).version)").zip .
+        cd ..
+        
+    - name: Upload extension package
+      uses: actions/upload-artifact@v4
+      with:
+        name: chrome-extension-package
+        path: kick-autosend-v*.zip
+        
+    - name: Create release assets
+      if: github.event_name == 'release'
+      run: |
+        # Rename for release
+        mv kick-autosend-v*.zip kick-autosend-${{ github.event.release.tag_name }}.zip
+        
+    - name: Upload to release
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./kick-autosend-${{ github.event.release.tag_name }}.zip
+        asset_name: kick-autosend-${{ github.event.release.tag_name }}.zip
+        asset_content_type: application/zip

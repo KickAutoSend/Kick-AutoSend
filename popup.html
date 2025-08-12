@@ -377,12 +377,14 @@
     }
     
     .form-group {
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     
     .form-group label {
-      display: block;
-      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px;
       font-weight: 500;
       color: var(--primary-color);
     }
@@ -391,7 +393,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     
     .switch {
@@ -453,6 +455,17 @@
       outline: none;
       border-color: #53fc18;
     }
+
+    input:disabled, select:disabled, textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: #222;
+    }
+
+    .form-group.disabled label {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     
     input::placeholder, textarea::placeholder {
       color: #999;
@@ -462,14 +475,18 @@
     
     textarea {
       resize: vertical;
-      min-height: 60px;
+      min-height: 50px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       line-height: 1.4;
       letter-spacing: 0.01em;
     }
+
+    #blacklistedWords {
+      min-height: 50px;
+    }
     
     #repeaterMessage {
-      min-height: 80px;
+      min-height: 70px;
     }
     
     .char-counter {
@@ -502,12 +519,29 @@
     .voice-item {
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 8px;
       font-size: 11px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s ease;
+    }
+
+    .voice-item:hover {
+      background: var(--input-bg);
     }
     
     .voice-item input[type="checkbox"] {
       width: auto;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .voice-item label {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      margin: 0;
     }
     
     .btn {
@@ -537,10 +571,13 @@
     
     .status {
       text-align: center;
-      padding: 10px;
-      margin-top: 10px;
+      padding: 5px;
       border-radius: 6px;
       font-weight: bold;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     
     .status.success {
@@ -561,13 +598,13 @@
     .stats {
       background: var(--secondary-bg);
       border-radius: 6px;
-      padding: 10px;
+      padding: 8px;
     }
     
     .stats-row {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
     
     .stats-value {
@@ -800,6 +837,67 @@
       font-size: 11px;
     }
 
+    .tooltip-label {
+      cursor: help;
+      position: relative;
+      padding-bottom: 1px;
+    }
+
+    .tooltip-label:hover {
+      border-bottom-color: #999;
+    }
+
+
+
+
+
+
+
+
+
+    .tooltip-label::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.95);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 1000;
+      margin-bottom: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      max-width: 250px;
+      min-width: 180px;
+      text-align: left;
+      line-height: 1.4;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .tooltip-label:hover::after {
+      opacity: 1;
+    }
+
+    /* Special positioning for tooltips that might go off-screen */
+    .tooltip-label[data-tooltip*="Auto-replace TTS voices"]::after,
+    .tooltip-label[data-tooltip*="Add voices not in the default list"]::after,
+    .tooltip-label[data-tooltip*="Minimum time between auto-replies"]::after,
+    .tooltip-label[data-tooltip*="Override the main character limit"]::after,
+    .tooltip-label[data-tooltip*="Restrict extension to specific channel"]::after,
+    .tooltip-label[data-tooltip*="Enabling responds to messages that only contains commands"]::after {
+      left: 0;
+      transform: none;
+      max-width: 250px;
+    }
+
     /* Extension disabled state */
     .extension-disabled .tabs,
     .extension-disabled .tab-content,
@@ -819,6 +917,73 @@
 
     .disabled-tab:hover {
       background: var(--tab-bg) !important;
+    }
+
+    /* Unified tooltip label styling */
+    .tooltip-label {
+      cursor: help;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    /* Labels with counters (flex layout) */
+    .form-group label.tooltip-label[for*="whitelist"],
+    .form-group label.tooltip-label[for*="customMessage"],
+    .form-group label.tooltip-label[for*="blacklistedWords"],
+    .form-group label.tooltip-label[for*="repeaterMessage"],
+    .form-group label.tooltip-label[for*="commandflageCommands"] {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Underlines for labels with counters */
+    .form-group label.tooltip-label[for*="whitelist"] > span:first-child,
+    .form-group label.tooltip-label[for*="customMessage"] > span:first-child,
+    .form-group label.tooltip-label[for*="blacklistedWords"] > span:first-child,
+    .form-group label.tooltip-label[for*="repeaterMessage"] > span:first-child,
+    .form-group label.tooltip-label[for*="commandflageCommands"] > span:first-child {
+      border-bottom: 1px dotted #72747b;
+      padding-bottom: 1px;
+    }
+
+    /* Hover effects for labels with counters */
+    .form-group label.tooltip-label[for*="whitelist"]:hover > span:first-child,
+    .form-group label.tooltip-label[for*="customMessage"]:hover > span:first-child,
+    .form-group label.tooltip-label[for*="blacklistedWords"]:hover > span:first-child,
+    .form-group label.tooltip-label[for*="repeaterMessage"]:hover > span:first-child,
+    .form-group label.tooltip-label[for*="commandflageCommands"]:hover > span:first-child {
+      border-bottom-color: #999;
+    }
+
+    /* Underlines for all other tooltip labels - use inline-block to limit width */
+    .tooltip-label:not([for*="whitelist"]):not([for*="customMessage"]):not([for*="blacklistedWords"]):not([for*="repeaterMessage"]):not([for*="commandflageCommands"]) {
+      display: inline-block;
+      border-bottom: 1px dotted #72747b;
+      padding-bottom: 1px;
+    }
+
+    /* Hover effects for all other tooltip labels */
+    .tooltip-label:not([for*="whitelist"]):not([for*="customMessage"]):not([for*="blacklistedWords"]):not([for*="repeaterMessage"]):not([for*="commandflageCommands"]):hover {
+      border-bottom-color: #999;
+    }
+
+    /* Tooltip disabled state - completely removes underlines and functionality */
+    .tooltip-label.tooltips-disabled {
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+      cursor: default !important;
+    }
+
+    /* Remove underlines from disabled tooltip labels with counters */
+    .tooltip-label.tooltips-disabled > span:first-child {
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+    }
+
+    .tooltip-label.tooltips-disabled:hover::after {
+      opacity: 0 !important;
+      pointer-events: none !important;
     }
   </style>
 </head>
@@ -884,16 +1049,14 @@
         <input type="checkbox" id="repeaterEnabled">
         <span class="slider"></span>
       </label>
-      <span>AutoSend Mode Enabled</span>
-      <span class="help-icon" data-tooltip="Automatically send messages at set intervals. Save presets for reuse.">?</span>
+      <span class="tooltip-label" data-tooltip="Automatically send messages at set intervals. Save presets for reuse.">AutoSend Mode Enabled</span>
     </div>
     
 
     
     <div class="form-group">
-      <label for="repeaterMessage">Message Template:</label>
+      <label for="repeaterMessage" class="tooltip-label" data-tooltip="Template message for AutoSend mode"><span>Message Template:</span> <span class="char-counter" id="repeater-counter">0/150 characters</span></label>
       <textarea id="repeaterMessage" placeholder="!duke hello everyone! what's poppin?"></textarea>
-      <div class="char-counter" id="repeater-counter">0/150 characters</div>
     </div>
 
     <div class="preset-section">
@@ -945,71 +1108,78 @@
         <input type="checkbox" id="enabled">
         <span class="slider"></span>
       </label>
-      <span>Responder Enabled</span>
-      <span class="help-icon" data-tooltip="Resend messages of whitelisted non-subs when they start with a '!'">?</span>
-    </div>
-    
-    <div class="toggle-switch">
-      <label class="switch">
-        <input type="checkbox" id="responderAllowCommands">
-        <span class="slider"></span>
-      </label>
-      <span>Allow Command-Only Messages</span>
-      <span class="help-icon" data-tooltip="Enable to respond to messages like '!followage'. Disable to only respond to TTS messages.">?</span>
+      <span class="tooltip-label" data-tooltip="Resend messages of whitelisted non-subs when they start with a '!'">Responder Enabled</span>
     </div>
     
     <div class="form-group">
-      <label for="whitelist">Whitelisted Users (one per line):</label>
+      <label>Responder Options:</label>
+      <div class="row" style="align-items: center; gap: 15px;">
+        <div class="toggle-switch" style="margin-bottom: 0;">
+          <label class="switch">
+            <input type="checkbox" id="responderAllowCommands">
+            <span class="slider"></span>
+          </label>
+          <span class="tooltip-label" data-tooltip="Enabling responds to messages that only contains commands.">Commands</span>
+        </div>
+        <div class="toggle-switch" style="margin-bottom: 0;">
+          <label class="switch">
+            <input type="checkbox" id="includeSubscribers">
+            <span class="slider"></span>
+          </label>
+          <span class="tooltip-label" data-tooltip="Ignores subscriber badge.">Subscribers</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label for="responderInterval" class="tooltip-label" data-tooltip="Minimum time between auto-replies to prevent spam. Default: 30 seconds.">Responder Cooldown (sec.):</label>
+      <input type="number" id="responderInterval" min="10" max="300" value="30">
+    </div>
+    
+    <div class="form-group">
+      <label for="whitelist" class="tooltip-label" data-tooltip="Users whose messages will trigger auto-replies"><span>Whitelisted Users (one per line):</span> <span class="char-counter" id="whitelist-counter">0 users</span></label>
       <textarea id="whitelist" placeholder="jawn&#10;jawnathan"></textarea>
-      <div class="char-counter" id="whitelist-counter">0 users</div>
     </div>
     
     <div class="form-group">
-      <label for="customMessage">Custom Reply Message (optional):</label>
+      <label for="customMessage" class="tooltip-label" data-tooltip="Custom message to send instead of echoing the original"><span>Custom Reply Message (optional):</span> <span class="char-counter" id="message-counter">0/500 characters</span></label>
       <input type="text" id="customMessage" placeholder="Leave empty to echo original message">
-      <div class="char-counter" id="message-counter">0/500 characters</div>
-      <div style="font-size: 11px; color: #999; margin-top: 3px;">
-        <strong>Empty:</strong> echoes original • <strong>With text:</strong> sends custom message
-      </div>
     </div>
     
     <div class="form-group">
-      <label for="blacklistedWords">Blacklisted Words (comma-separated):</label>
+      <label for="blacklistedWords" class="tooltip-label" data-tooltip="Messages containing these words will be ignored."><span>Blacklisted Words (comma-separated):</span> <span class="char-counter" id="blacklist-counter">0 words</span></label>
       <textarea id="blacklistedWords" placeholder="scam, shit, kill" rows="2"></textarea>
-      <div class="char-counter" id="blacklist-counter">0 words</div>
-      <div style="font-size: 11px; color: #999; margin-top: 3px;">
-        Messages containing these words will be ignored. Enter words separated by commas.
-      </div>
     </div>
     
-    <div class="toggle-switch">
-      <label class="switch">
-        <input type="checkbox" id="includeSubscribers">
-        <span class="slider"></span>
-      </label>
-      <span>Include Subscribers (ignore subscriber badge)</span>
+
+    
+    <div style="margin-top: 15px;">
+      <button class="btn" id="saveResponder" style="width: 100%;">Save Settings</button>
     </div>
   </div>
   
   <!-- VOICES TAB -->
   <div class="tab-content" id="voices">
     
-    <div class="toggle-switch">
-      <label class="switch">
-        <input type="checkbox" id="voiceRotationRepeater">
-        <span class="slider"></span>
-      </label>
-      <span>Voice Rotation for AutoSend</span>
-      <span class="help-icon" data-tooltip="Auto-replace TTS voices in repeater messages">?</span>
-    </div>
-    
-    <div class="toggle-switch">
-      <label class="switch">
-        <input type="checkbox" id="voiceRotationResponder">
-        <span class="slider"></span>
-      </label>
-      <span>Voice Rotation for Responder</span>
-      <span class="help-icon" data-tooltip="Auto-replace TTS voices in auto-replied messages">?</span>
+    <div class="form-group">
+      <label class="tooltip-label" data-tooltip="Auto-replace TTS voices in repeater and auto-replied messages">Voice Rotation:</label>
+      <div class="row" style="align-items: center; gap: 15px;">
+        <div class="toggle-switch" style="margin-bottom: 0;">
+          <label class="switch">
+            <input type="checkbox" id="voiceRotationRepeater">
+            <span class="slider"></span>
+          </label>
+          <span>AutoSend</span>
+        </div>
+        <div class="toggle-switch" style="margin-bottom: 0;">
+          <label class="switch">
+            <input type="checkbox" id="voiceRotationResponder">
+            <span class="slider"></span>
+          </label>
+          <span>Responder</span>
+        </div>
+      </div>
+
     </div>
     
     <div class="form-group">
@@ -1033,14 +1203,15 @@
     </div>
 
     <div class="form-group" style="margin-top: 20px;">
-      <label>Add Custom Voice:</label>
+              <label class="tooltip-label" data-tooltip="Add voices not in the default list. Will create commands like '!batman'. You can enter 'batman' or '!batman' - both will work.">Add Custom Voice (✨):</label>
       <div class="row">
-        <input type="text" id="customVoiceName" placeholder="Voice name (e.g., 'batman')" style="flex: 2;">
+        <input type="text" id="customVoiceName" placeholder="Voice name (e.g., '!batman')" style="flex: 2;">
         <button class="btn btn-small" id="addCustomVoice" style="flex: 1; margin-left: 10px;">Add Voice</button>
       </div>
-      <div style="font-size: 11px; color: #999; margin-top: 3px;">
-        Add voices not in the default list. Will create commands like "!batman"
-      </div>
+    </div>
+    
+    <div style="margin-top: 15px;">
+      <button class="btn" id="saveVoices" style="width: 100%;">Save Settings</button>
     </div>
   </div>
   
@@ -1052,17 +1223,12 @@
         <input type="checkbox" id="commandflageEnabled">
         <span class="slider"></span>
       </label>
-      <span>Commaflage Mode Enabled</span>
-      <span class="help-icon" data-tooltip="Send multiple commands in 3 sec. intervals">?</span>
+      <span class="tooltip-label" data-tooltip="Send multiple commands in 3 sec. intervals">Commaflage Mode Enabled</span>
     </div>
     
     <div class="form-group">
-      <label for="commandflageCommands">Commands (comma-separated):</label>
-      <textarea id="commandflageCommands" placeholder="!commands, !voices, !followage" rows="3"></textarea>
-      <div class="char-counter" id="commands-counter">0 commands</div>
-      <div style="font-size: 11px; color: #999; margin-top: 3px;">
-        Enter commands with the "!" prefix. Commands will never repeat in the same round.
-      </div>
+      <label for="commandflageCommands" class="tooltip-label" data-tooltip="Messages won't repeat in the same round. Can be commands (!duke) or regular text."><span>Messages (comma-separated):</span> <span class="char-counter" id="commands-counter">0 messages</span></label>
+      <textarea id="commandflageCommands" placeholder="!duke, hello everyone, !followage" rows="3"></textarea>
     </div>
 
     <div class="toggle-switch">
@@ -1070,7 +1236,12 @@
         <input type="checkbox" id="randomizeCommands" checked>
         <span class="slider"></span>
       </label>
-      <span>Randomize command sequence</span>
+      <span class="tooltip-label" data-tooltip="Commands will be sent in random order instead of the sequence you entered">Randomize command sequence</span>
+    </div>
+    
+    <div class="form-group">
+      <label for="commandInterval" class="tooltip-label" data-tooltip="Time between each message in seconds. Lower values send messages faster.">Message Interval (seconds):</label>
+      <input type="number" id="commandInterval" min="1" max="60" value="3">
     </div>
     
     <div class="row">
@@ -1111,24 +1282,8 @@
     <!-- ADVANCED SETTINGS SECTION -->
     <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
       <h3 style="color: var(--primary-color); margin-bottom: 10px; font-size: 14px;">⚙️ Advanced Settings</h3>
-      <div class="toggle-switch">
-        <label class="switch">
-          <input type="checkbox" id="useAdvancedLimits">
-          <span class="slider"></span>
-        </label>
-        <span>Use Advanced Limits (override defaults)</span>
-      </div>
-      
       <div class="form-group">
-        <label for="minDelay">Minimum Send Delay / User Cooldown (sec.):</label>
-        <input type="number" id="minDelay" min="30" max="300" value="90">
-        <div style="font-size: 11px; color: #999; margin-top: 3px;">
-          Default: 90 sec. Minimum time between messages. 
-        </div>
-      </div>
-      
-      <div class="form-group">
-        <label for="maxCharLimit">Maximum Message Characters:</label>
+        <label for="maxCharLimit" class="tooltip-label" data-tooltip="Override the main character limit. Default: 150 char. Messages exceeding limit will have a red warning.">Maximum Message Characters:</label>
         <input type="number" id="maxCharLimit" min="50" max="500" value="150">
         <div style="font-size: 11px; color: #999; margin-top: 3px;">
           Default: 150 char. Messages exceeding limit will have a <span style="color:#ff3333">red</span> warning.
@@ -1136,10 +1291,20 @@
       </div>
 
       <div class="form-group">
-        <label for="channelRestriction">Channel Restriction (optional):</label>
+        <label for="channelRestriction" class="tooltip-label" data-tooltip="Restrict extension to specific channel. Enter username only (no kick.com/)">Channel Restriction (optional):</label>
         <input type="text" id="channelRestriction" placeholder="e.g., jawnstream (leave empty for all channels)">
         <div style="font-size: 11px; color: #999; margin-top: 3px;">
           Restrict extension to specific channel. Enter username only (no kick.com/)
+        </div>
+      </div>
+      
+      <div class="form-group" style="margin-top: 15px;">
+        <div class="toggle-switch">
+          <label class="switch">
+            <input type="checkbox" id="tooltipsEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <span>Enable Tooltips</span>
         </div>
       </div>
       
@@ -1149,19 +1314,8 @@
       </div>
       <input type="file" id="importFile" accept=".json" style="display: none;">
       
-      <div class="stats" style="margin-top: 15px;">
-        <div class="stats-row">
-          <span>Current Min Delay:</span>
-          <span class="stats-value" id="currentMinDelay">90s</span>
-        </div>
-        <div class="stats-row">
-          <span>Current Max Chars:</span>
-          <span class="stats-value" id="currentMaxChars">150</span>
-        </div>
-        <div class="stats-row">
-          <span>Blacklisted Words:</span>
-          <span class="stats-value" id="currentBlacklistCount">0</span>
-        </div>
+      <div style="margin-top: 15px;">
+        <button class="btn" id="save" style="width: 100%;">Save Settings</button>
       </div>
 
     </div>
@@ -1213,9 +1367,7 @@
     </div>
   </div>
   
-  <div id="global-save-container">
-    <button class="btn" id="save" style="width: calc(100% - 24px); margin: 12px;">Save Settings</button>
-  </div>
+
   
   <div class="status" id="status"></div>
 

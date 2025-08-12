@@ -33,8 +33,7 @@ All data is stored locally in your browser using Chrome's storage API. No data i
 The extension requires the following permissions:
 
 - **Storage**: To save your settings and preferences locally
-- **Scripting**: To inject content scripts into Kick.com pages
-- **Active Tab**: To access the current Kick.com tab
+- **Active Tab**: To access the current Kick.com tab for chat interaction
 - **Host Permissions**: Limited to `kick.com` and subdomains only
 
 ## Third-Party Services

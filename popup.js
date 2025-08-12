@@ -5,7 +5,7 @@ const VOICES = [
   'herbert', 'unc', 'icespice', 'snoop', 'rock', 'morgan', 'sketch', 'kevinhart', 
   '50cent', 'kanye', 'mcgregor', 'willsmith', 'elon', 'kamala', 'jordan', 'shapiro', 
   'djkhaled', 'jayz', 'princeharry', 'robertdowneyjr', 'billgates', 'lex', 'duke', 
-  'ebz', 'ariana', 'kim', 'cardi', 'rainbow', 'swift', 'watson', 'hillary', 'thrall', 'steve'
+  'ebz', 'ariana', 'kim', 'cardi', 'rainbow', 'swift', 'watson', 'hillary', 'thrall', 'steve', 'rfk'
 ];
 
 // Theme configurations with default voices
@@ -80,14 +80,10 @@ const elements = {
   // Queue tab elements removed (queue tab replaced with commandflage)
   
   // Advanced tab
-  minDelay: document.getElementById('minDelay'),
   maxCharLimit: document.getElementById('maxCharLimit'),
   blacklistedWords: document.getElementById('blacklistedWords'),
   blacklistCounter: document.getElementById('blacklist-counter'),
-  useAdvancedLimits: document.getElementById('useAdvancedLimits'),
-  currentMinDelay: document.getElementById('currentMinDelay'),
-  currentMaxChars: document.getElementById('currentMaxChars'),
-  currentBlacklistCount: document.getElementById('currentBlacklistCount'),
+  responderInterval: document.getElementById('responderInterval'),
   
   // Stats tab
   totalReplies: document.getElementById('totalReplies'),
@@ -107,6 +103,7 @@ const elements = {
   commandflageEnabled: document.getElementById('commandflageEnabled'),
   commandflageCommands: document.getElementById('commandflageCommands'),
   commandsCounter: document.getElementById('commands-counter'),
+  commandInterval: document.getElementById('commandInterval'),
   commandRounds: document.getElementById('commandRounds'),
   commandCount: document.getElementById('commandCount'),
   randomizeCommands: document.getElementById('randomizeCommands'),
@@ -129,7 +126,8 @@ const elements = {
 
   // Common
   save: document.getElementById('save'),
-  status: document.getElementById('status')
+  status: document.getElementById('status'),
+  tooltipsEnabled: document.getElementById('tooltipsEnabled')
 };
 
 // Default settings
@@ -149,10 +147,9 @@ const DEFAULT_SETTINGS = {
   voiceRotationResponder: false,
   voiceMode: 'random',
   selectedVoices: ['duke', 'trump', 'spongebob'],
-  minDelay: 90,
+  responderInterval: 30,
   maxCharLimit: 150,
   blacklistedWords: [],
-  useAdvancedLimits: false,
   currentTheme: 'kick',
   customVoices: [], // User-added custom voices
   messagePresets: [], // New setting for saved presets
@@ -161,8 +158,10 @@ const DEFAULT_SETTINGS = {
   commandflageEnabled: false,
   commandflageCommands: [],
   randomizeCommands: true,
+  commandInterval: 3,
   commandRounds: 1,
   commandCount: 0,
+  tooltipsEnabled: true,
   stats: {
     totalReplies: 0,
     totalProcessed: 0,
@@ -248,9 +247,10 @@ function applyTheme(themeName) {
     console.log(`Applied theme ${theme.name} with default voices:`, currentSettings.selectedVoices);
   }
 
-  // Always update commandflage commands when switching themes
-  currentSettings.commandflageCommands = [...theme.defaultCommands];
-  elements.commandflageCommands.value = theme.defaultCommands.join(', ');
+  // Only update commandflage commands when switching themes if they're empty
+  if (!currentSettings.commandflageCommands || currentSettings.commandflageCommands.length === 0) {
+    currentSettings.commandflageCommands = [...theme.defaultCommands];
+  }
   
   // Always update placeholder to show theme-appropriate defaults
   elements.commandflageCommands.placeholder = theme.defaultCommands.join(', ');
@@ -579,6 +579,15 @@ function loadSettings() {
       }
     }
     
+    // Handle commandflage commands - they can be stored as string or array
+    if (typeof currentSettings.commandflageCommands === 'string') {
+      // Convert string to array for consistency
+      currentSettings.commandflageCommands = currentSettings.commandflageCommands
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+    
     // Update UI
     elements.masterEnabled.checked = currentSettings.masterEnabled !== false; // Default to true
     elements.enabled.checked = currentSettings.enabled;
@@ -605,18 +614,19 @@ function loadSettings() {
     elements.voiceRotationRepeater.checked = currentSettings.voiceRotationRepeater || false;
     elements.voiceRotationResponder.checked = currentSettings.voiceRotationResponder || false;
     elements.voiceMode.value = currentSettings.voiceMode;
-    elements.minDelay.value = currentSettings.minDelay;
+    elements.responderInterval.value = currentSettings.responderInterval || 30;
     elements.maxCharLimit.value = currentSettings.maxCharLimit;
     elements.blacklistedWords.value = Array.isArray(currentSettings.blacklistedWords) 
       ? currentSettings.blacklistedWords.join(', ') : '';
-    elements.useAdvancedLimits.checked = currentSettings.useAdvancedLimits;
     elements.channelRestriction.value = currentSettings.channelRestriction || '';
     elements.commandflageEnabled.checked = currentSettings.commandflageEnabled;
-    elements.commandflageCommands.value = Array.isArray(currentSettings.commandflageCommands) 
+    elements.commandflageCommands.value = Array.isArray(currentSettings.commandflageCommands) && currentSettings.commandflageCommands.length > 0
       ? currentSettings.commandflageCommands.join(', ') : '';
     elements.randomizeCommands.checked = currentSettings.randomizeCommands;
+    elements.commandInterval.value = currentSettings.commandInterval || 3;
     elements.commandRounds.value = currentSettings.commandRounds || 1;
     elements.commandCount.value = currentSettings.commandCount || 0;
+    elements.tooltipsEnabled.checked = currentSettings.tooltipsEnabled !== false; // Default to true if not set
     
     updateVoiceSelection();
     loadStats();
@@ -627,6 +637,13 @@ function loadSettings() {
     applyTheme(currentSettings.currentTheme || 'kick');
     updateMasterState(); // Update master toggle state
     updateAllTabIndicators(); // Update tab status indicators
+    updateTooltipVisibility(); // Update tooltip visibility based on setting
+    
+    // Check for commaflage completion
+    checkCommaflageCompletion();
+    
+    // Set up periodic checking for commaflage completion
+    setInterval(checkCommaflageCompletion, 2000); // Check every 2 seconds
     
     // Initialize repeater UI state
     if (elements.stopRepeater) elements.stopRepeater.disabled = true;
@@ -674,8 +691,8 @@ function saveSettings() {
   currentSettings.voiceMode = ['random', 'sequential'].includes(elements.voiceMode.value) ? elements.voiceMode.value : 'random';
   currentSettings.selectedVoices = getSelectedVoices();
   
-  const minDelay = parseInt(elements.minDelay.value);
-  currentSettings.minDelay = (minDelay >= 30 && minDelay <= 300) ? minDelay : 90;
+  const responderInterval = parseInt(elements.responderInterval.value);
+  currentSettings.responderInterval = (responderInterval >= 10 && responderInterval <= 300) ? responderInterval : 30;
   
   const maxCharLimit = parseInt(elements.maxCharLimit.value);
   currentSettings.maxCharLimit = (maxCharLimit >= 50 && maxCharLimit <= 500) ? maxCharLimit : 150;
@@ -686,7 +703,6 @@ function saveSettings() {
     .map(s => sanitizeInput(s, 50))
     .filter(Boolean)
     .slice(0, 50); // Max 50 blacklisted words
-  currentSettings.useAdvancedLimits = elements.useAdvancedLimits.checked;
   
   // Channel restriction
   currentSettings.channelRestriction = sanitizeInput(elements.channelRestriction.value, 100);
@@ -700,11 +716,17 @@ function saveSettings() {
     .slice(0, 20); // Max 20 commands
   currentSettings.randomizeCommands = elements.randomizeCommands.checked;
   
+  const commandInterval = parseInt(elements.commandInterval.value);
+  currentSettings.commandInterval = (commandInterval >= 1 && commandInterval <= 60) ? commandInterval : 3;
+  
   const commandRounds = parseInt(elements.commandRounds.value);
   currentSettings.commandRounds = (commandRounds >= 0 && commandRounds <= 100) ? commandRounds : 1;
   
   const commandCount = parseInt(elements.commandCount.value);
   currentSettings.commandCount = (commandCount >= 0 && commandCount <= 1000) ? commandCount : 0;
+  
+  // Tooltip setting
+  currentSettings.tooltipsEnabled = elements.tooltipsEnabled.checked;
   
   // Save to storage
   chrome.storage.local.set(currentSettings, () => {
@@ -990,50 +1012,75 @@ function updateAllTabIndicators() {
   
   // Voices status
   const hasVoiceRotation = currentSettings.voiceRotationRepeater || currentSettings.voiceRotationResponder;
-  if (hasVoiceRotation && currentSettings.selectedVoices && currentSettings.selectedVoices.length > 0) {
-    updateTabIndicator(elements.voicesIndicator, 'active');
-  } else if (hasVoiceRotation) {
-    updateTabIndicator(elements.voicesIndicator, 'partial');
-  } else {
-    updateTabIndicator(elements.voicesIndicator, 'inactive');
+  if (elements.voicesIndicator) {
+    if (hasVoiceRotation && currentSettings.selectedVoices && currentSettings.selectedVoices.length > 0) {
+      updateTabIndicator(elements.voicesIndicator, 'active');
+    } else if (hasVoiceRotation) {
+      updateTabIndicator(elements.voicesIndicator, 'partial');
+    } else {
+      updateTabIndicator(elements.voicesIndicator, 'inactive');
+    }
   }
   
   // Commandflage status
-  if (elements.startCommandflage && elements.startCommandflage.disabled) {
-    updateTabIndicator(elements.commandflageIndicator, 'active');
-  } else if (currentSettings.commandflageEnabled && currentSettings.commandflageCommands && currentSettings.commandflageCommands.length > 0) {
-    updateTabIndicator(elements.commandflageIndicator, 'partial');
-  } else {
-    updateTabIndicator(elements.commandflageIndicator, 'inactive');
+  if (elements.commandflageIndicator) {
+    if (elements.startCommandflage && elements.startCommandflage.disabled) {
+      updateTabIndicator(elements.commandflageIndicator, 'active');
+    } else if (currentSettings.commandflageEnabled && currentSettings.commandflageCommands && currentSettings.commandflageCommands.length > 0) {
+      updateTabIndicator(elements.commandflageIndicator, 'partial');
+    } else {
+      updateTabIndicator(elements.commandflageIndicator, 'inactive');
+    }
   }
 }
 
 function updateAdvancedDisplay() {
-  // Use current input values if advanced limits are enabled, otherwise use defaults
-  const minDelay = currentSettings.useAdvancedLimits ? 
-    (parseInt(elements.minDelay.value) || 90) : 90;
-  const maxChars = currentSettings.useAdvancedLimits ? 
-    (parseInt(elements.maxCharLimit.value) || 150) : 150;
+  // Update current values display
+  const maxChars = parseInt(elements.maxCharLimit?.value) || 150;
   const blacklistCount = currentSettings.blacklistedWords ? currentSettings.blacklistedWords.length : 0;
   
-  elements.currentMinDelay.textContent = `${minDelay}s`;
-  elements.currentMaxChars.textContent = `${maxChars}`;
-  elements.currentBlacklistCount.textContent = `${blacklistCount}`;
+  if (elements.currentMaxChars) {
+    elements.currentMaxChars.textContent = `${maxChars}`;
+  }
+  if (elements.currentBlacklistCount) {
+    elements.currentBlacklistCount.textContent = `${blacklistCount}`;
+  }
 }
 
 function updateAllCounters() {
-  const maxChars = currentSettings.useAdvancedLimits ? currentSettings.maxCharLimit : 150;
+  const maxChars = parseInt(elements.maxCharLimit?.value) || 150;
   
   updateCharCounter(elements.whitelist, elements.whitelistCounter);
   updateCharCounter(elements.customMessage, elements.messageCounter, 500);
   updateCharCounter(elements.repeaterMessage, elements.repeaterCounter, maxChars);
   updateCharCounter(elements.blacklistedWords, elements.blacklistCounter);
   
-  // Update commandflage commands counter
+  // Update commandflage messages counter
   if (elements.commandflageCommands && elements.commandsCounter) {
-    const commands = elements.commandflageCommands.value.split(',').filter(s => s.trim()).length;
-    elements.commandsCounter.textContent = `${commands} commands`;
+    const messages = elements.commandflageCommands.value.split(',').filter(s => s.trim()).length;
+    elements.commandsCounter.textContent = `${messages} messages`;
   }
+  
+  // Save commandflage commands to storage when they change
+  if (elements.commandflageCommands) {
+    const commands = elements.commandflageCommands.value;
+    chrome.storage.local.set({ commandflageCommands: commands });
+  }
+}
+
+function updateTooltipVisibility() {
+  const tooltipsEnabled = elements.tooltipsEnabled.checked;
+  const tooltipLabels = document.querySelectorAll('.tooltip-label');
+  
+  tooltipLabels.forEach(label => {
+    if (tooltipsEnabled) {
+      label.classList.remove('tooltips-disabled');
+    } else {
+      label.classList.add('tooltips-disabled');
+    }
+  });
+  
+  console.log(`Tooltips ${tooltipsEnabled ? 'enabled' : 'disabled'} for ${tooltipLabels.length} labels`);
 }
 
 // Queue management functions
@@ -1450,42 +1497,18 @@ function testContentScriptConnection(tabId, callback, retryCount = 0) {
   });
 }
 
-// Enhanced function to test and possibly inject content script
+// Enhanced function to test content script readiness
 function ensureContentScriptReady(tabId, callback) {
   // First, test if content script is already ready
   testContentScriptConnection(tabId, (isReady, result) => {
     if (isReady) {
       callback(true, result);
     } else {
-      // If not ready, try to inject/reinject the content script
-      chrome.tabs.get(tabId, (tab) => {
-        if (chrome.runtime.lastError) {
-          callback(false, 'Cannot access tab information');
-          return;
-        }
-        
-        if (!tab.url || !tab.url.includes('kick.com')) {
-          callback(false, 'Not on a Kick.com page');
-          return;
-        }
-        
-        // Attempt to execute content script
-        chrome.tabs.executeScript(tabId, {
-          file: 'content.js'
-        }, () => {
-          if (chrome.runtime.lastError) {
-            // Script might already be injected, test again
-            setTimeout(() => {
-              testContentScriptConnection(tabId, callback);
-            }, 500);
-          } else {
-            // Wait a moment for script to initialize, then test
-            setTimeout(() => {
-              testContentScriptConnection(tabId, callback);
-            }, 1000);
-          }
-        });
-      });
+      // Content script should be auto-injected by manifest.json
+      // Just wait a bit and test again
+      setTimeout(() => {
+        testContentScriptConnection(tabId, callback);
+      }, 1000);
     }
   });
 }
@@ -1613,6 +1636,17 @@ function startCommandflage() {
 }
 
 function startCommaflageWithConnection(commands, randomize, rounds, maxCommands, tabId) {
+  // Get interval from UI
+  const interval = parseInt(elements.commandInterval.value) || 3;
+  
+  console.log('Starting commaflage with config:', {
+    commands: commands,
+    randomize: randomize,
+    rounds: rounds,
+    maxCommands: maxCommands,
+    interval: interval
+  });
+  
   // Send configuration to service worker to start background commaflage
   chrome.runtime.sendMessage({
     type: 'START_COMMAFLAGE',
@@ -1620,7 +1654,8 @@ function startCommaflageWithConnection(commands, randomize, rounds, maxCommands,
       commands: commands,
       randomize: randomize,
       rounds: rounds,
-      maxCommands: maxCommands
+      maxCommands: maxCommands,
+      interval: interval
     },
     tabId: tabId
   }, (response) => {
@@ -1638,7 +1673,7 @@ function startCommaflageWithConnection(commands, randomize, rounds, maxCommands,
       if (elements.stopCommandflage) elements.stopCommandflage.disabled = false;
       updateAllTabIndicators(); // Update status indicators
       
-      showStatus(`Commaflage started! Running in background with ${commands.split(',').length} commands`, 'success');
+      showStatus(`Commaflage started! Running in background with ${commands.split(',').length} messages`, 'success');
     }
   });
 }
@@ -1667,6 +1702,57 @@ function stopCommandflage() {
   console.log('Commaflage stopped');
 }
 
+function checkCommaflageCompletion() {
+  // Check if commaflage has completed
+  chrome.runtime.sendMessage({ type: 'GET_COMMAFLAGE_STATUS' }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.log('Error checking commaflage status:', chrome.runtime.lastError.message);
+      return;
+    }
+    
+    if (response && response.completionReason && !response.active) {
+      // Commaflage has completed, handle it
+      handleCommaflageCompletion({
+        reason: response.completionReason,
+        commandsSent: response.completionCommandsSent,
+        roundsCompleted: response.completionRoundsCompleted
+      });
+      
+      // Clear the completion state
+      chrome.runtime.sendMessage({ type: 'CLEAR_COMMAFLAGE_COMPLETION' });
+    }
+  });
+}
+
+function handleCommaflageCompletion(message) {
+  console.log('Commaflage completed:', message);
+  
+  // Reset UI to initial state
+  if (elements.startCommandflage) {
+    elements.startCommandflage.disabled = false;
+    elements.startCommandflage.textContent = 'Save and Start';
+  }
+  if (elements.stopCommandflage) elements.stopCommandflage.disabled = true;
+  
+  // Update tab indicators
+  updateAllTabIndicators();
+  
+  // Show completion message
+  const completionReason = message.reason || 'completed';
+  const commandsSent = message.commandsSent || 0;
+  const roundsCompleted = message.roundsCompleted || 0;
+  
+  let statusMessage = `Commaflage ${completionReason}!`;
+  if (commandsSent > 0) {
+    statusMessage += ` Sent ${commandsSent} messages`;
+  }
+  if (roundsCompleted > 0) {
+    statusMessage += ` over ${roundsCompleted} round${roundsCompleted > 1 ? 's' : ''}`;
+  }
+  
+  showStatus(statusMessage, 'success');
+}
+
 // Event listeners
 function initEventListeners() {
   // Character counters
@@ -1681,20 +1767,21 @@ function initEventListeners() {
     updateAdvancedDisplay();
   });
   elements.commandflageCommands.addEventListener('input', () => {
-    const commands = elements.commandflageCommands.value.split(',').filter(s => s.trim()).length;
-    elements.commandsCounter.textContent = `${commands} commands`;
+    setTimeout(updateAllTabIndicators, 100);
+    // Update counter immediately
+    const messages = elements.commandflageCommands.value.split(',').filter(s => s.trim()).length;
+    if (elements.commandsCounter) {
+      elements.commandsCounter.textContent = `${messages} messages`;
+    }
+    // Save commands to storage immediately
+    const commands = elements.commandflageCommands.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    chrome.storage.local.set({ commandflageCommands: commands });
   });
   
-  // Advanced settings
-  elements.minDelay.addEventListener('input', updateAdvancedDisplay);
-  elements.maxCharLimit.addEventListener('input', () => {
-    updateAdvancedDisplay();
-    updateAllCounters();
-  });
-  elements.useAdvancedLimits.addEventListener('change', () => {
-    updateAdvancedDisplay();
-    updateAllCounters();
-  });
+
   
   // Repeater controls
   elements.startRepeater.addEventListener('click', startRepeater);
@@ -1755,8 +1842,14 @@ function initEventListeners() {
   // Save button
   elements.save.addEventListener('click', saveSettings);
   
+  // Tooltip toggle
+  elements.tooltipsEnabled.addEventListener('change', () => {
+    updateTooltipVisibility();
+    saveSettings();
+  });
+  
   // Auto-save on toggle changes
-  [elements.enabled, elements.includeSubscribers, elements.responderAllowCommands, elements.voiceRotationRepeater, elements.voiceRotationResponder, elements.useAdvancedLimits, elements.commandflageEnabled].forEach(toggle => {
+  [elements.enabled, elements.includeSubscribers, elements.responderAllowCommands, elements.voiceRotationRepeater, elements.voiceRotationResponder, elements.commandflageEnabled].forEach(toggle => {
     toggle.addEventListener('change', () => {
       saveSettings();
       updateAllTabIndicators(); // Update indicators on toggle changes
@@ -1790,12 +1883,10 @@ function initEventListeners() {
     setTimeout(updateAllTabIndicators, 100);
   });
   
-  elements.commandflageCommands.addEventListener('input', () => {
-    setTimeout(updateAllTabIndicators, 100);
-  });
+
 }
 
-// Listen for messages from content script
+// Listen for messages from content script and service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'UPDATE_STATS') {
     updateStats(message.stat, message.value || 1);
@@ -1839,6 +1930,11 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get(['masterEnabled'], (settings) => {
     updateExtensionBadge(settings.masterEnabled !== false);
   });
+  
+  // Ensure advanced display is updated after everything loads
+  setTimeout(() => {
+    updateAdvancedDisplay();
+  }, 100);
 });
 
 // Clean up when popup closes

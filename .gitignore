@@ -1,0 +1,39 @@
+# Build artifacts
+dist/
+*.zip
+build-info.txt
+
+# Development files (keep these private)
+# These should be in Kick-AutoSend-Dev directory, not here
+DEPLOYMENT.md
+QUICK_START.md
+package.json
+build-*.bat
+build-*.js
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary folders
+tmp/
+temp/

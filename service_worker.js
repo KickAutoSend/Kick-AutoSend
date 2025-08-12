@@ -135,13 +135,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   
   if (msg && msg.type === "STOP_COMMAFLAGE") {
-    stopServiceWorkerCommaflage();
+    stopServiceWorkerCommaflage('manually stopped');
     sendResponse({ success: true });
     return true;
   }
   
   if (msg && msg.type === "GET_COMMAFLAGE_STATUS") {
     sendResponse(commaflageState);
+    return true;
+  }
+  
+  if (msg && msg.type === "CLEAR_COMMAFLAGE_COMPLETION") {
+    // Clear completion state
+    delete commaflageState.completionReason;
+    delete commaflageState.completionCommandsSent;
+    delete commaflageState.completionRoundsCompleted;
+    delete commaflageState.completionTime;
+    sendResponse({ success: true });
     return true;
   }
 });
@@ -267,14 +277,17 @@ function startServiceWorkerCommaflage(config, tabId) {
   // Stop any existing commaflage
   stopServiceWorkerCommaflage();
   
-  // Parse commands from comma-separated string
+  // Parse messages from comma-separated string (can be commands or regular text)
   const commands = config.commands
     .split(',')
     .map(cmd => cmd.trim())
-    .filter(cmd => cmd.length > 0 && cmd.startsWith('!'));
+    .filter(cmd => cmd.length > 0);
+  
+  console.log('Commaflage config received:', config);
+  console.log('Parsed messages:', commands);
   
   if (commands.length === 0) {
-    console.error('No valid commands provided for commaflage');
+    console.error('No valid messages provided for commaflage');
     return;
   }
   
@@ -284,6 +297,7 @@ function startServiceWorkerCommaflage(config, tabId) {
     randomize: config.randomize,
     rounds: config.rounds,
     maxCommands: config.maxCommands,
+    interval: config.interval || 3, // Default to 3 seconds
     currentRound: 1,
     commandsSent: 0,
     tabId: tabId,
@@ -291,23 +305,32 @@ function startServiceWorkerCommaflage(config, tabId) {
     currentCommandIndex: 0
   };
   
+  console.log('Commaflage state initialized:', commaflageState);
+  
   // Prepare command queue for first round
   prepareCommandQueue();
   
   // Send first command immediately
   sendNextCommaflageCommand();
   
-  // Set up interval for subsequent commands (3 seconds)
+  // Set up interval for subsequent commands (configurable)
+  const intervalMs = (commaflageState.interval || 3) * 1000;
   commaflageInterval = setInterval(() => {
     sendNextCommaflageCommand();
-  }, 3000);
+  }, intervalMs);
 }
 
-function stopServiceWorkerCommaflage() {
+function stopServiceWorkerCommaflage(reason = 'stopped') {
   if (commaflageInterval) {
     clearInterval(commaflageInterval);
     commaflageInterval = null;
   }
+  
+  // Store completion state for popup to check
+  commaflageState.completionReason = reason;
+  commaflageState.completionCommandsSent = commaflageState.commandsSent;
+  commaflageState.completionRoundsCompleted = commaflageState.currentRound - 1;
+  commaflageState.completionTime = Date.now();
   
   commaflageState.active = false;
   console.log('Commaflage stopped in service worker. Total commands sent:', commaflageState.commandsSent);
@@ -337,7 +360,7 @@ function sendNextCommaflageCommand() {
   // Check if we've exceeded max commands
   if (commaflageState.maxCommands > 0 && commaflageState.commandsSent >= commaflageState.maxCommands) {
     console.log('Commaflage: Max commands reached');
-    stopServiceWorkerCommaflage();
+    stopServiceWorkerCommaflage('max commands reached');
     return;
   }
   
@@ -346,7 +369,7 @@ function sendNextCommaflageCommand() {
     // Round complete
     if (commaflageState.rounds > 0 && commaflageState.currentRound >= commaflageState.rounds) {
       console.log('Commaflage: All rounds complete');
-      stopServiceWorkerCommaflage();
+      stopServiceWorkerCommaflage('all rounds completed');
       return;
     }
     
@@ -355,23 +378,25 @@ function sendNextCommaflageCommand() {
     prepareCommandQueue();
   }
   
-  // Get next command
-  const command = commaflageState.commandQueue[commaflageState.currentCommandIndex];
+  // Get next message
+  const message = commaflageState.commandQueue[commaflageState.currentCommandIndex];
   commaflageState.currentCommandIndex++;
   
-  // Send command
+  console.log('Sending commaflage message:', message, 'Type:', typeof message);
+  
+  // Send message
   chrome.tabs.sendMessage(commaflageState.tabId, {
     type: 'SEND_REPEATER_MESSAGE', // Reuse the same message sending system
-    message: command
+    message: message
   }, (response) => {
     if (chrome.runtime.lastError) {
       console.error('Error sending commaflage command:', chrome.runtime.lastError.message);
       if (chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
-        stopServiceWorkerCommaflage();
+        stopServiceWorkerCommaflage('connection lost');
       }
     } else {
       commaflageState.commandsSent++;
-      console.log('Commaflage command sent:', command, 'Total sent:', commaflageState.commandsSent);
+      console.log('Commaflage message sent:', message, 'Total sent:', commaflageState.commandsSent);
     }
   });
 }

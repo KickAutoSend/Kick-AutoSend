@@ -425,20 +425,29 @@ currentChannel = getCurrentChannel();
 lastUrl = window.location.href;
 debugLog('🔄 Initial channel detected:', currentChannel);
 
-// Load utility modules
-if (typeof window !== 'undefined') {
-  // Initialize managers if available
-  const script1 = document.createElement('script');
-  script1.src = chrome.runtime.getURL('utils/IntervalManager.js');
-  document.head.appendChild(script1);
+// Load utility modules only if they haven't been loaded already
+if (typeof window !== 'undefined' && !window.kickAutoSendUtilsLoaded) {
+  // Set flag to prevent duplicate loading
+  window.kickAutoSendUtilsLoaded = true;
   
-  const script2 = document.createElement('script');
-  script2.src = chrome.runtime.getURL('utils/DOMCache.js');
-  document.head.appendChild(script2);
+  // Check if scripts are already loaded to prevent duplicates
+  if (!window.intervalManager) {
+    const script1 = document.createElement('script');
+    script1.src = chrome.runtime.getURL('utils/IntervalManager.js');
+    document.head.appendChild(script1);
+  }
   
-  const script3 = document.createElement('script');
-  script3.src = chrome.runtime.getURL('core/SecurityValidator.js');
-  document.head.appendChild(script3);
+  if (!window.domCache) {
+    const script2 = document.createElement('script');
+    script2.src = chrome.runtime.getURL('utils/DOMCache.js');
+    document.head.appendChild(script2);
+  }
+  
+  if (!window.securityValidator) {
+    const script3 = document.createElement('script');
+    script3.src = chrome.runtime.getURL('core/SecurityValidator.js');
+    document.head.appendChild(script3);
+  }
 }
 
 // Monitor URL changes for navigation detection (using managed interval)
