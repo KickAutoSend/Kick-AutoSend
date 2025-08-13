@@ -52,11 +52,22 @@ Automate Kick commands and regular messages in rounds with customizable interval
 
 ## 🚀 Getting Started
 
-1. Install the Kick AutoSend extension
-2. Open a Kick.com stream
-3. Click the extension icon to access features
-4. Set up your AutoSend messages, Responder rules, voices, or commands
-5. Enable the toggles and let Kick AutoSend handle the rest
+### 📥 Installation
+
+**Chrome Web Store (Recommended):**
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-blue?style=for-the-badge&logo=google-chrome)](https://chromewebstore.google.com/detail/kick-autosend/miadacmkmddgdlinpfcgblifnolbmjie)
+
+**Manual Installation (Developers):**
+1. Clone this repository
+2. Open Chrome → `chrome://extensions/` → Enable "Developer mode"
+3. Click "Load unpacked" and select the extension folder
+
+### 🎯 Quick Setup
+
+1. Open a Kick.com stream
+2. Click the extension icon to access features
+3. Configure your AutoSend messages, Responder rules, voices, or commands
+4. Enable the toggles and let Kick AutoSend handle the rest
 
 ## 📋 Recent Updates
 
