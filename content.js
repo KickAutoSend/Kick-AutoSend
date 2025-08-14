@@ -6,90 +6,37 @@
  * Including auto-reply, message repeater, and voice rotation
  */
 
+console.log('🚀 KICK AUTOSEND CONTENT SCRIPT LOADED');
+
+// Content script ready flag
+let contentScriptReady = false;
+
+// Set content script as ready immediately
+contentScriptReady = true;
+
 // Current state cached in the page
 let STATE = { 
-    isEnabled: false,
+    enabled: false,
     whitelist: [],
-    blacklist: [],
-    autoReplyEnabled: false,
-    repeaterEnabled: false,
+    blacklistedWords: [],
+    customMessage: '',
+    includeSubscribers: false,
     voiceRotationEnabled: false,
-    currentTheme: 'kick',
-    settings: {
-        rateLimit: 60,
-        maxMessageLength: 200,
-        includeSubscribers: false,
-        delayBetweenMessages: 1000
-    },
-    stats: {
-        totalMessages: 0,
-        totalReplies: 0,
-        totalRepeats: 0,
-        lastUsed: null
-    }
+    voiceRotationRepeater: false,
+    voiceRotationResponder: false,
+    voiceMode: 'random',
+    selectedVoices: ['duke', 'trump', 'spongebob'],
+    customVoices: [],
+    channelRestriction: '',
+    responderInterval: 30 // Default responder interval
 };
 
-// Tracks processed messages by a stable id (persistent across refreshes)
-let seen = new Set();
-let seenLoaded = false;
-
-// Load persistent message IDs on script load
-chrome.storage.local.get(['processedMessageIds'], (result) => {
-  try {
-    if (result.processedMessageIds && Array.isArray(result.processedMessageIds)) {
-      seen = new Set(result.processedMessageIds);
-      debugLog('✅ Loaded', seen.size, 'processed message IDs from storage');
-    } else {
-      debugLog('✅ No previous message IDs found, starting fresh');
-    }
-    seenLoaded = true;
-  } catch (error) {
-    debugLog('❌ Error loading message IDs:', error);
-    seen = new Set();
-    seenLoaded = true;
-  }
-});
-
-// Save processed message IDs to storage (with cleanup)
-function saveProcessedIds() {
-  try {
-    const idsArray = Array.from(seen);
-    // Keep only the last 500 IDs to prevent unbounded growth (reduced for better performance)
-    if (idsArray.length > 500) {
-      const keepIds = idsArray.slice(-500);
-      seen = new Set(keepIds);
-      debugLog('🧹 Cleaned processed IDs, kept latest 500');
-    }
-    chrome.storage.local.set({ processedMessageIds: Array.from(seen) });
-    debugLog('💾 Saved', seen.size, 'processed IDs to storage');
-  } catch (error) {
-    debugLog('❌ Error saving processed IDs:', error);
-  }
-}
-
-// Cleanup old processed IDs periodically (every 10 minutes) - using managed interval
-if (typeof window !== 'undefined' && window.intervalManager) {
-  window.intervalManager.setInterval('seen-cleanup', () => {
-    if (seen.size > 300) {
-      const idsArray = Array.from(seen);
-      const keepIds = idsArray.slice(-300);
-      seen = new Set(keepIds);
-      saveProcessedIds();
-      debugLog('🧹 Managed cleanup: kept latest 300 processed message IDs');
-    }
-  }, 10 * 60 * 1000);
-} else {
-  // Fallback
-  setInterval(() => {
-    if (seen.size > 300) {
-      const idsArray = Array.from(seen);
-      const keepIds = idsArray.slice(-300);
-      seen = new Set(keepIds);
-      saveProcessedIds();
-      debugLog('Periodic cleanup: kept latest 300 processed message IDs');
-    }
-  }, 10 * 60 * 1000);
-}
+// Simple message tracking (no complex storage)
+let processedMessages = new Set();
+let observerStarted = false;
+let currentObserver = null; // Store reference to current observer
+let pageLoadTime = Date.now(); // Track when page was loaded
+let lastResponseTime = 0; // Track last response time for cooldown
 
 // Rate limiting
 let lastMessageTime = 0;
@@ -97,17 +44,154 @@ let messageCount = 0;
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const MAX_MESSAGES_PER_WINDOW = 60;
 
-// Timeout and ban tracking
-let timeoutCount = 0;
-let banCount = 0;
+// Available TTS voices
+const VOICES = [
+  'anthony', 'trump', 'spongebob', 'drphil', 'tate', 'petergriffin', 'biden', 'arnold', 
+  'train', 'joerogan', 'alexjones', 'samueljackson', 'kermit', 'eddie', 'goku', 'ice', 
+  'herbert', 'unc', 'icespice', 'snoop', 'rock', 'morgan', 'sketch', 'kevinhart', 
+  '50cent', 'kanye', 'mcgregor', 'willsmith', 'elon', 'kamala', 'jordan', 'shapiro', 
+  'djkhaled', 'jayz', 'princeharry', 'robertdowneyjr', 'billgates', 'lex', 'duke', 
+  'ebz', 'ariana', 'kim', 'cardi', 'rainbow', 'swift', 'watson', 'hillary', 'thrall', 'steve'
+];
 
-// Debug logging (enhanced for troubleshooting)
-function debugLog(message, data = null) {
-  // Log important events and debugging info
-  if (message.includes('🎉') || message.includes('🎯') || message.includes('ERROR') || 
-      message.includes('State updated') || message.includes('🔍') || message.includes('❌')) {
-    console.log(`[Kick Auto Reply] ${message}`, data || '');
+// Voice rotation functionality
+let voiceIndex = 0;
+
+function getRandomVoice() {
+  const allVoices = [...(STATE.selectedVoices || ['duke']), ...(STATE.customVoices || [])];
+  return allVoices[Math.floor(Math.random() * allVoices.length)];
+}
+
+function getSequentialVoice() {
+  const allVoices = [...(STATE.selectedVoices || ['duke']), ...(STATE.customVoices || [])];
+  const voice = allVoices[voiceIndex % allVoices.length];
+  voiceIndex++;
+  return voice;
+}
+
+function getNextVoice(context = 'responder') {
+  const isEnabled = context === 'repeater' ? 
+    STATE.voiceRotationRepeater : 
+    STATE.voiceRotationResponder;
+    
+  if (!isEnabled) return null;
+  return STATE.voiceMode === 'random' ? getRandomVoice() : getSequentialVoice();
+}
+
+// Message processing with voice replacement
+function processMessage(template, context = 'responder') {
+  const isEnabled = context === 'repeater' ? 
+    STATE.voiceRotationRepeater : 
+    STATE.voiceRotationResponder;
+    
+  if (!isEnabled) return template;
+  
+  const voicePattern = /![a-zA-Z0-9]+/g;
+  const matches = template.match(voicePattern);
+  
+  if (!matches || matches.length === 0) return template;
+  
+  const currentVoice = matches[0];
+  const nextVoice = getNextVoice(context);
+  
+  if (nextVoice) {
+    const processedMessage = template.replace(currentVoice, `!${nextVoice}`);
+    return processedMessage;
   }
+  
+  return template;
+}
+
+// Blacklist check function
+function containsBlacklistedWords(text) {
+  if (!STATE.blacklistedWords || STATE.blacklistedWords.length === 0) {
+    return false;
+  }
+  
+  const lowerText = text.toLowerCase();
+  return STATE.blacklistedWords.some(word => {
+    if (word.trim()) {
+      return lowerText.includes(word.toLowerCase());
+    }
+    return false;
+  });
+}
+
+// Statistics tracking
+function updateStats(stat, value = 1) {
+  try {
+    chrome.runtime.sendMessage({
+      type: 'UPDATE_STATS',
+      stat: stat,
+      value: value
+    });
+  } catch (error) {
+    // Silent error handling for production
+  }
+}
+
+// Helper functions to find chat elements
+function getChatInput() {
+  return document.querySelector('[data-testid="chat-input"]') ||
+         document.querySelector('div[data-input="true"] .editor-input[contenteditable="true"]') ||
+         document.querySelector('[contenteditable="true"][role="textbox"]') ||
+         document.querySelector('.editor-input[contenteditable="true"]') ||
+         document.querySelector('div[contenteditable="true"]') ||
+         document.querySelector('.chat-input') ||
+         document.querySelector('input[placeholder*="message"]');
+}
+
+function getSendButton() {
+  return document.querySelector('#send-message-button') || 
+         document.querySelector('button[aria-label*="Send"]') ||
+         document.querySelector('button[type="submit"]') ||
+         document.querySelector('[data-testid="send-button"]');
+}
+
+// Send message function
+async function sendMessage(text) {
+  const input = getChatInput();
+  if (!input) {
+    return false;
+  }
+
+  input.focus();
+
+  // Clear content
+  document.execCommand('selectAll', false, null);
+  document.execCommand('delete', false, null);
+
+  // Insert text
+  const ev = new InputEvent('beforeinput', {
+    inputType: 'insertText',
+    data: text,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  input.dispatchEvent(ev);
+
+  await new Promise(r => setTimeout(r, 100));
+
+  // Safety net if text did not appear
+  if (!input.textContent || input.textContent.trim() === '') {
+    document.execCommand('insertText', false, text);
+  }
+
+  await new Promise(r => setTimeout(r, 50));
+
+  const btn = getSendButton();
+  if (btn) {
+    btn.click();
+    return true;
+  }
+
+  // Fallback to Enter key
+  const kd = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
+  const ku = new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
+  input.dispatchEvent(kd);
+  input.dispatchEvent(ku);
+  return true;
 }
 
 // Check if user is timed out
@@ -140,566 +224,192 @@ function isUserBanned() {
   return false;
 }
 
-// Channel detection - persistent across navigation
-let currentChannel = '';
-let lastUrl = '';
-
-// Get current channel name from URL
-function getCurrentChannel() {
-  try {
-    const path = window.location.pathname;
-    const match = path.match(/^\/([^\/]+)/);
-    const channel = match ? match[1].toLowerCase() : '';
-    debugLog('🔍 Current channel extracted:', channel, 'from path:', path);
-    return channel;
-  } catch (error) {
-    debugLog('❌ Error getting current channel:', error);
-    return '';
-  }
-}
-
-// Check if URL has changed and update channel if needed
-function checkChannelChange() {
-  const newUrl = window.location.href;
-  if (newUrl !== lastUrl) {
-    lastUrl = newUrl;
-    const newChannel = getCurrentChannel();
-    if (newChannel !== currentChannel) {
-      currentChannel = newChannel;
-      debugLog('🔄 Channel changed to:', currentChannel);
-      
-      // Reset processed messages when channel changes
-      seen.clear();
-      saveProcessedIds();
-      debugLog('🧹 Cleared processed messages due to channel change');
-    }
-  }
-}
-
-// Check if extension should work in current channel (uses cached channel)
-function isChannelAllowed() {
-  try {
-    if (!STATE || !STATE.channelRestriction || STATE.channelRestriction.trim() === '') {
-      return true; // No restriction means work everywhere
-    }
-    
-    const allowedChannel = STATE.channelRestriction.toLowerCase().trim();
-    
-    debugLog('Channel check - Current:', currentChannel, 'Allowed:', allowedChannel);
-    return currentChannel === allowedChannel;
-  } catch (error) {
-    debugLog('❌ Error in isChannelAllowed:', error);
-    return true; // Default to allowing if there's an error
-  }
-}
-
-// Enhanced debug function to log current state
-function debugState() {
-  debugLog('=== CURRENT STATE ===');
-  debugLog('Extension enabled:', STATE.enabled);
-  debugLog('Whitelist:', STATE.whitelist);
-  debugLog('Blacklisted words:', STATE.blacklistedWords);
-  debugLog('Whitelist length:', STATE.whitelist.length);
-  debugLog('=================');
-}
-
-// Available TTS voices
-const VOICES = [
-  'anthony', 'trump', 'spongebob', 'drphil', 'tate', 'petergriffin', 'biden', 'arnold', 
-  'train', 'joerogan', 'alexjones', 'samueljackson', 'kermit', 'eddie', 'goku', 'ice', 
-  'herbert', 'unc', 'icespice', 'snoop', 'rock', 'morgan', 'sketch', 'kevinhart', 
-  '50cent', 'kanye', 'mcgregor', 'willsmith', 'elon', 'kamala', 'jordan', 'shapiro', 
-  'djkhaled', 'jayz', 'princeharry', 'robertdowneyjr', 'billgates', 'lex', 'duke', 
-  'ebz', 'ariana', 'kim', 'cardi', 'rainbow', 'swift', 'watson', 'hillary', 'thrall', 'steve'
-];
-
-let voiceIndex = 0;
-
-// Voice rotation functionality
-function getRandomVoice() {
-  // Combine selected voices and custom voices
-  const allVoices = [...(STATE.selectedVoices || ['duke']), ...(STATE.customVoices || [])];
-  return allVoices[Math.floor(Math.random() * allVoices.length)];
-}
-
-function getSequentialVoice() {
-  // Combine selected voices and custom voices
-  const allVoices = [...(STATE.selectedVoices || ['duke']), ...(STATE.customVoices || [])];
-  const voice = allVoices[voiceIndex % allVoices.length];
-  voiceIndex++;
-  return voice;
-}
-
-function getNextVoice() {
-  if (!STATE.voiceRotationEnabled) return null;
-  return STATE.voiceMode === 'random' ? getRandomVoice() : getSequentialVoice();
-}
-
-// Message processing with voice replacement
-function processMessage(template) {
-  if (!STATE.voiceRotationEnabled) return template;
-  
-  // Find voice commands in the message (e.g., !duke, !trump)
-  const voicePattern = /![a-zA-Z0-9]+/g;
-  const matches = template.match(voicePattern);
-  
-  if (!matches || matches.length === 0) return template;
-  
-  // Replace the first voice command found with a rotated voice
-  const currentVoice = matches[0];
-  const nextVoice = getNextVoice();
-  
-  if (nextVoice) {
-    const processedMessage = template.replace(currentVoice, `!${nextVoice}`);
-    debugLog(`🎵 Voice rotation: ${currentVoice} → !${nextVoice}`);
-    return processedMessage;
-  }
-  
-  return template;
-}
-
-// Blacklist check function
-function containsBlacklistedWords(text) {
-  if (!STATE.blacklistedWords || STATE.blacklistedWords.length === 0) {
-    return false;
-  }
-  
-  const lowerText = text.toLowerCase();
-  return STATE.blacklistedWords.some(word => {
-    if (word.trim()) {
-      return lowerText.includes(word.toLowerCase());
-    }
-    return false;
-  });
-}
-
-// Statistics tracking
-function updateStats(stat, value = 1) {
-  chrome.runtime.sendMessage({
-    type: 'UPDATE_STATS',
-    stat: stat,
-    value: value
-  });
-}
-
-// Enhanced security validation functions
-function validateSettings(payload) {
-  // Use enhanced security validator if available
-  if (typeof window !== 'undefined' && window.securityValidator) {
-    const result = window.securityValidator.validateSettings(payload);
-    if (!result.valid) {
-      debugLog('❌ Enhanced security validation failed:', result.errors);
-      return false;
-    }
-    return true;
-  }
-  
-  // Fallback to basic validation
-  if (!payload || typeof payload !== 'object') return false;
-  
-  // Validate arrays
-  if (payload.whitelist && (!Array.isArray(payload.whitelist) || payload.whitelist.length > 100)) return false;
-  if (payload.blacklistedWords && (!Array.isArray(payload.blacklistedWords) || payload.blacklistedWords.length > 50)) return false;
-  if (payload.selectedVoices && (!Array.isArray(payload.selectedVoices) || payload.selectedVoices.length > 60)) return false;
-  
-  // Validate numeric values
-  if (payload.minDelay && (typeof payload.minDelay !== 'number' || payload.minDelay < 30 || payload.minDelay > 300)) return false;
-  if (payload.interval && (typeof payload.interval !== 'number' || payload.interval < 10 || payload.interval > 3600)) return false;
-  if (payload.maxCharLimit && (typeof payload.maxCharLimit !== 'number' || payload.maxCharLimit < 50 || payload.maxCharLimit > 500)) return false;
-  
-  // Validate strings
-  if (payload.customMessage && (typeof payload.customMessage !== 'string' || payload.customMessage.length > 500)) return false;
-  if (payload.repeaterMessage && (typeof payload.repeaterMessage !== 'string' || payload.repeaterMessage.length > 500)) return false;
-  
-  return true;
-}
-
-// Listen for state updates from background or popup
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Handle ping requests to test connection
-  if (msg && msg.type === "PING") {
-    debugLog('🏓 Ping received, responding...');
-    sendResponse({ status: 'ready', timestamp: Date.now() });
-    return true;
-  }
-  
-  // Handle master state changes
-  if (msg && msg.type === "MASTER_STATE_CHANGE") {
-    debugLog('🔄 Master state changed:', msg.enabled);
-    // Stop observer when extension is disabled
-    if (!msg.enabled && typeof intervalManager !== 'undefined') {
-      intervalManager.clearAll();
-      debugLog('🛑 Extension disabled - stopping all monitoring');
-    } else if (msg.enabled) {
-      // Restart observer when re-enabled
-      startObserver();
-      debugLog('✅ Extension enabled - starting monitoring');
-    }
-    sendResponse({status: 'master_state_updated'});
-    return true;
-  }
-  
-  if (msg && msg.type === "STATE" && msg.payload) {
-    // Validate incoming settings
-    if (!validateSettings(msg.payload)) {
-      debugLog('❌ Invalid settings received, ignoring update');
-      return;
-    }
-    
-    STATE = {
-      ...STATE,
-      ...msg.payload,
-      whitelist: (msg.payload.whitelist || []).map(s => String(s).toLowerCase().slice(0, 50)),
-      blacklistedWords: (msg.payload.blacklistedWords || []).map(s => String(s).toLowerCase().slice(0, 50)),
-      channelRestriction: String(msg.payload.channelRestriction || '').slice(0, 100),
-    };
-    debugLog('State updated:', STATE);
-    debugState();
-  }
-  
-  if (msg && msg.type === "SEND_REPEATER_MESSAGE") {
-    debugLog('🎯 Sending repeater message:', msg.message);
-    
-    sendMessage(msg.message).then(success => {
-      if (success) {
-        updateStats('totalRepeater');
-        updateStats('successCount');
-        debugLog('🎯 Repeater message sent successfully');
-        
-        // Send response back to popup
-        if (sendResponse) {
-          sendResponse({ success: true, message: 'Message sent successfully' });
-        }
-        
-        // Update queue status
-        if (msg.queueId) {
-          chrome.runtime.sendMessage({
-            type: 'QUEUE_UPDATE',
-            queueId: msg.queueId,
-            status: 'sent'
-          });
-        }
-      } else {
-        debugLog('ERROR: Repeater message failed to send');
-        
-        // Send error response back to popup
-        if (sendResponse) {
-          sendResponse({ success: false, error: 'Message send failed' });
-        }
-        
-        // Update queue status
-        if (msg.queueId) {
-          chrome.runtime.sendMessage({
-            type: 'QUEUE_UPDATE',
-            queueId: msg.queueId,
-            status: 'failed',
-            error: 'Send message failed'
-          });
-        }
-      }
-    }).catch(error => {
-      debugLog('❌ Error in repeater message sending:', error);
-      if (sendResponse) {
-        sendResponse({ success: false, error: error.toString() });
-      }
-    });
-    return true; // Important: indicate we're handling the message
-  }
-});
-
-// Load initial state and request fresh state from background
-chrome.storage.local.get(["enabled", "whitelist", "blacklistedWords"], (cfg) => {
-  STATE.enabled = Boolean(cfg.enabled);
-  STATE.whitelist = Array.isArray(cfg.whitelist)
-    ? cfg.whitelist.map(s => String(s).toLowerCase())
-    : [];
-  STATE.blacklistedWords = Array.isArray(cfg.blacklistedWords)
-    ? cfg.blacklistedWords.map(s => String(s).toLowerCase())
-    : [];
-  debugLog('Initial state loaded:', STATE);
-  debugState();
-});
-
-// Initialize channel detection
-currentChannel = getCurrentChannel();
-lastUrl = window.location.href;
-debugLog('🔄 Initial channel detected:', currentChannel);
-
-// Load utility modules only if they haven't been loaded already
-if (typeof window !== 'undefined' && !window.kickAutoSendUtilsLoaded) {
-  // Set flag to prevent duplicate loading
-  window.kickAutoSendUtilsLoaded = true;
-  
-  // Check if scripts are already loaded to prevent duplicates
-  if (!window.intervalManager) {
-    const script1 = document.createElement('script');
-    script1.src = chrome.runtime.getURL('utils/IntervalManager.js');
-    document.head.appendChild(script1);
-  }
-  
-  if (!window.domCache) {
-    const script2 = document.createElement('script');
-    script2.src = chrome.runtime.getURL('utils/DOMCache.js');
-    document.head.appendChild(script2);
-  }
-  
-  if (!window.securityValidator) {
-    const script3 = document.createElement('script');
-    script3.src = chrome.runtime.getURL('core/SecurityValidator.js');
-    document.head.appendChild(script3);
-  }
-}
-
-// Monitor URL changes for navigation detection (using managed interval)
-if (typeof window !== 'undefined' && window.intervalManager) {
-  window.intervalManager.setInterval('channel-change-monitor', checkChannelChange, 1000);
-} else {
-  // Fallback for immediate use
-  const channelMonitorId = setInterval(checkChannelChange, 1000);
-  
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
-    clearInterval(channelMonitorId);
-  });
-}
-
-// Request fresh state from background on load
-setTimeout(() => {
-  debugLog('Requesting fresh state from background...');
-  chrome.runtime.sendMessage({ type: "PING" }, () => {
-    // This will trigger the background script to send current state
-  });
-}, 100);
-
-// Query helpers with caching optimization
-// Helper functions to find chat elements
-function getChatInput() {
-  // Use DOM cache if available for better performance
-  if (typeof window !== 'undefined' && window.domCache) {
-    const cached = window.domCache.getChatElements();
-    if (cached.input) return cached.input;
-  }
-  
-  // Fallback to direct queries
-  return document.querySelector('[data-testid="chat-input"]') ||
-         document.querySelector('div[data-input="true"] .editor-input[contenteditable="true"]') ||
-         document.querySelector('[contenteditable="true"][role="textbox"]') ||
-         document.querySelector('.editor-input[contenteditable="true"]') ||
-         document.querySelector('div[contenteditable="true"]') ||
-         document.querySelector('.chat-input') ||
-         document.querySelector('input[placeholder*="message"]');
-}
-
-function getSendButton() {
-  // Use DOM cache if available for better performance
-  if (typeof window !== 'undefined' && window.domCache) {
-    const cached = window.domCache.getChatElements();
-    if (cached.sendButton) return cached.sendButton;
-  }
-  
-  // Fallback to direct queries
-  return document.querySelector('#send-message-button') || 
-         document.querySelector('button[aria-label*="Send"]') ||
-         document.querySelector('button[type="submit"]') ||
-         document.querySelector('[data-testid="send-button"]');
-}
-
-// Insert text into Lexical editor using beforeinput, then click send
-async function sendMessage(text) {
-  debugLog('🚀 Attempting to send message:', text);
-  const input = getChatInput();
-  if (!input) {
-    debugLog('❌ ERROR: Chat input not found');
-    debugLog('🔍 Available inputs:', document.querySelectorAll('input, textarea, [contenteditable]'));
-    return false;
-  }
-  debugLog('✅ Chat input found:', input);
-
-  input.focus();
-
-  // Clear content
-  document.execCommand('selectAll', false, null);
-  document.execCommand('delete', false, null);
-
-  // Ask the editor to insert text through its normal input pipeline
-  const ev = new InputEvent('beforeinput', {
-    inputType: 'insertText',
-    data: text,
-    bubbles: true,
-    cancelable: true,
-    composed: true,
-  });
-  input.dispatchEvent(ev);
-
-  // Wait a bit for the event to process
-  await new Promise(r => setTimeout(r, 100));
-
-  // Safety net if text did not appear (only use fallback if needed)
-  if (!input.textContent || input.textContent.trim() === '') {
-    debugLog('beforeinput failed, using fallback insertText');
-    document.execCommand('insertText', false, text);
-  } else {
-    debugLog('beforeinput succeeded, text content:', input.textContent.trim());
-  }
-
-  await new Promise(r => setTimeout(r, 50));
-
-  const btn = getSendButton();
-  if (btn) {
-    debugLog('✅ Send button found, clicking:', btn);
-    btn.click();
-    return true;
-  }
-
-  // Fallback to Enter key if no button
-  debugLog('⚠️ Send button not found, trying Enter key');
-  debugLog('🔍 Available buttons:', document.querySelectorAll('button'));
-  const kd = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
-  const ku = new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
-  input.dispatchEvent(kd);
-  input.dispatchEvent(ku);
-  return true;
-}
-
 // Badge check - look for subscriber badge images
 function hasSubscriberBadge(msgEl) {
   const badgeImg = msgEl.querySelector('img[src*="channel_subscriber_badges"]');
-  const hasBadge = !!badgeImg;
-  debugLog('Subscriber badge check:', hasBadge);
-  if (badgeImg) {
-    debugLog('Badge image found:', badgeImg.src);
-  }
-  return hasBadge;
+  return !!badgeImg;
 }
 
-// Extract username and text
-function parseMessage(msgEl) {
-  const userBtn = msgEl.querySelector('button[title]');
-  const username = userBtn ? userBtn.textContent.trim() : null;
-
-  let text = '';
-  const contentSpan = msgEl.querySelector('span.font-normal');
-  if (contentSpan) text = contentSpan.textContent || '';
-  else text = msgEl.textContent || '';
-
-  const result = { username, text: text.trim() };
-  debugLog('Parsed message:', result);
-  return result;
-}
-
+// Parse message with emotes
 function parseMessageWithEmotes(element) {
-  // Create a deep clone to avoid modifying the original
   const clone = element.cloneNode(true);
   
-  // Find all emote spans and replace them with their emote names
   const emoteSpans = clone.querySelectorAll('span[data-emote-name]');
   emoteSpans.forEach(emoteSpan => {
     const emoteName = emoteSpan.getAttribute('data-emote-name');
     if (emoteName) {
-      // Replace the entire emote span with just the emote name
       const textNode = document.createTextNode(emoteName);
       emoteSpan.parentNode.replaceChild(textNode, emoteSpan);
     }
   });
   
-  // Now get the text content which will include emote names
   return clone.textContent || '';
 }
 
+// Get message ID for duplicate prevention
 function getMessageId(node) {
-  // Try multiple approaches for stable message ID
   const holder = node.closest('div[data-index]');
   if (holder && holder.getAttribute('data-index')) {
-    const dataIndex = holder.getAttribute('data-index');
-    debugLog('🔍 Using data-index for ID:', dataIndex);
-    return 'idx:' + String(dataIndex);
+    return 'idx:' + String(holder.getAttribute('data-index'));
   }
   
-  // Fallback: Create stable ID based on message content
   const userBtn = node.querySelector('button[title]');
   const username = userBtn ? userBtn.textContent.trim() : 'unknown';
   const contentSpan = node.querySelector('span.font-normal');
   const text = contentSpan ? (contentSpan.textContent || '').trim() : '';
   
-  // Create a highly stable content-based ID
+  // Create a unique ID based on content and username
   const content = `${username}:${text}`;
   const hash = content.split('').reduce((a, b) => {
     a = ((a << 5) - a) + b.charCodeAt(0);
-    return a & a; // Convert to 32-bit integer
+    return a & a;
   }, 0);
   
-  const finalId = `msg:${username}:${Math.abs(hash)}`;
-  debugLog('🔍 Generated fallback ID:', finalId, 'from content:', content.slice(0, 50));
-  return finalId;
+  return `msg:${username}:${Math.abs(hash)}`;
 }
 
-function handleMessageNode(node) {
-  // ENHANCED DEBUGGING VERSION
-  debugLog('🔍 Processing message node...');
+// Check if message is truly new (sent after page load)
+function isNewMessage(node) {
+  // Check if the message has a timestamp or other indicators that it's recent
+  const messageTime = node.getAttribute('data-timestamp') || 
+                     node.getAttribute('data-time') || 
+                     node.querySelector('[data-time]')?.getAttribute('data-time');
   
-  // 1. Extension enabled check (fastest)
-  if (!STATE.enabled) {
-    debugLog('❌ Extension disabled');
-    return;
+  if (messageTime) {
+    const messageTimestamp = parseInt(messageTime);
+    return messageTimestamp > pageLoadTime;
   }
-  debugLog('🔍 Extension enabled ✓');
   
-  // 2. Channel restriction check (fast)
-  if (!isChannelAllowed()) {
-    debugLog('❌ Channel not allowed for extension');
-    return;
-  }
-  debugLog('🔍 Channel allowed ✓');
+  // Fallback: check if message is in the last few seconds of DOM
+  // This is a heuristic - messages at the bottom are likely newer
+  const allMessages = document.querySelectorAll('div[data-index]');
+  const messageIndex = Array.from(allMessages).indexOf(node);
+  const totalMessages = allMessages.length;
   
-  // 3. Valid HTML element check (fast)
-  if (!(node instanceof HTMLElement)) {
-    debugLog('❌ Not HTML element');
-    return;
-  }
-  debugLog('🔍 HTML element ✓');
+  // Consider messages in the last 20% as "new"
+  return messageIndex >= totalMessages * 0.8;
+}
 
-  // 3. Find message wrapper (fast DOM query)
+// Check cooldown
+function checkCooldown() {
+  const now = Date.now();
+  const cooldownMs = (STATE.responderInterval || 30) * 1000; // Convert seconds to milliseconds
+  
+  if (now - lastResponseTime < cooldownMs) {
+    return false;
+  }
+  
+  return true;
+}
+
+// Get current channel name from the page
+function getCurrentChannel() {
+  // Try multiple selectors to find the channel name
+  const selectors = [
+    'h1[data-testid="channel-name"]',
+    'h1[class*="channel"]',
+    'div[data-testid="channel-name"]',
+    'span[data-testid="channel-name"]',
+    'a[href*="/"] h1',
+    'a[href*="/"] span',
+    '.channel-name',
+    '[class*="channel-name"]',
+    'h1[class*="text-"]',
+    'div[class*="channel"] h1',
+    'div[class*="channel"] span',
+    'header h1',
+    'header span'
+  ];
+  
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      const text = element.textContent?.trim();
+      if (text) {
+        return text.toLowerCase();
+      }
+    }
+  }
+  
+  // Fallback: try to extract from URL
+  const url = window.location.href;
+  const match = url.match(/kick\.com\/([^\/\?]+)/);
+  if (match) {
+    const channelFromUrl = match[1].toLowerCase();
+    return channelFromUrl;
+  }
+  
+  return null;
+}
+
+// Check if current channel is allowed
+function isChannelAllowed() {
+  if (!STATE.channelRestriction || STATE.channelRestriction.trim() === '') {
+    return true; // No restriction set
+  }
+  
+  const currentChannel = getCurrentChannel();
+  if (!currentChannel) {
+    return true; // Allow if we can't determine channel
+  }
+  
+  const restrictedChannel = STATE.channelRestriction.toLowerCase().trim();
+  return currentChannel === restrictedChannel;
+}
+
+// Main message processing function
+function handleMessageNode(node) {
+  // 1. Extension enabled check
+  if (!STATE.enabled || !observerStarted) {
+    return;
+  }
+
+  // 2. Channel restriction check
+  if (!isChannelAllowed()) {
+    return;
+  }
+
+  // 3. Valid HTML element check
+  if (!(node instanceof HTMLElement)) {
+    return;
+  }
+
+  // 4. Find message wrapper
   const wrapper = node.matches('.group.relative') ? node : node.querySelector('.group.relative');
   if (!wrapper) {
-    debugLog('❌ No message wrapper found');
     return;
   }
-  debugLog('🔍 Message wrapper found ✓');
 
-  // 4. Parse username FIRST (before expensive checks)
+  // 5. Parse username
   const userBtn = wrapper.querySelector('button[title]');
   const username = userBtn ? userBtn.textContent.trim() : null;
   if (!username) {
-    debugLog('❌ No username found');
     return;
   }
-  debugLog('🔍 Username found:', username);
 
-  // 5. WHITELIST CHECK FIRST (most efficient early exit)
+  // 6. Whitelist check
   const isWhitelisted = STATE.whitelist.includes(username.toLowerCase());
-  debugLog('🔍 Whitelist check - Username:', username.toLowerCase(), 'Whitelist:', STATE.whitelist, 'Result:', isWhitelisted);
   if (!isWhitelisted) {
-    debugLog('❌ User not whitelisted');
     return;
   }
-  debugLog('🔍 User whitelisted ✓');
 
-  // 6. Check if seen Set is loaded and if already processed (avoid duplicate work)
-  if (!seenLoaded) {
-    debugLog('⏳ Waiting for processed IDs to load from storage...');
-    return;
-  }
-  
+  // 7. Check if already processed
   const id = getMessageId(node);
-  debugLog('🔍 Generated message ID:', id);
-  if (seen.has(id)) {
-    debugLog('❌ Message already processed, ID:', id);
+  if (processedMessages.has(id)) {
     return;
   }
-  debugLog('🔍 Message not processed before ✓, ID:', id);
-  debugLog('🔍 Total processed IDs in memory:', seen.size);
 
-  // 7. Parse message text (only if needed) - handle emotes properly
+  // 8. Check if message is truly new (not from page load)
+  if (!isNewMessage(node)) {
+    return;
+  }
+
+  // 9. Check cooldown
+  if (!checkCooldown()) {
+    return;
+  }
+
+  // 10. Parse message text
   let text = '';
   const contentSpan = wrapper.querySelector('span.font-normal');
   if (contentSpan) {
@@ -708,41 +418,33 @@ function handleMessageNode(node) {
     text = parseMessageWithEmotes(wrapper);
   }
   text = text.trim();
-  debugLog('🔍 Message text:', `"${text}"`);
 
-  // 8. Message starts with ! check
+  // 11. Message starts with ! check
   if (!text.startsWith('!')) {
-    debugLog('❌ Message does not start with !');
     return;
   }
-  debugLog('🔍 Message starts with ! ✓');
 
-  // 9. Blacklist check
+  // 12. Blacklist check
   if (containsBlacklistedWords(text)) {
-    debugLog('❌ Message contains blacklisted words');
     return;
   }
-  debugLog('🔍 Blacklist check passed ✓');
 
-  // 10. Subscriber badge check (most expensive, so last) - only if not including subscribers
+  // 13. Subscriber badge check
   if (!STATE.includeSubscribers && hasSubscriberBadge(wrapper)) {
-    debugLog('❌ User is subscriber and includeSubscribers is disabled');
     return;
   }
-  debugLog('🔍 Subscriber check passed ✓, includeSubscribers:', STATE.includeSubscribers);
 
-  // Check for timeout/ban status before proceeding
+  // 14. Additional safety check - prevent rapid processing
+  if (processedMessages.has(id)) {
+    return;
+  }
+
+  // Check for timeout/ban status
   if (isUserTimedOut()) {
-    debugLog('❌ User is timed out, cannot send message');
-    timeoutCount++;
-    updateStats('timeouts', timeoutCount);
     return;
   }
   
   if (isUserBanned()) {
-    debugLog('❌ User is banned, cannot send message');
-    banCount++;
-    updateStats('bans', banCount);
     return;
   }
 
@@ -754,213 +456,196 @@ function handleMessageNode(node) {
   }
   
   if (messageCount >= MAX_MESSAGES_PER_WINDOW) {
-    debugLog('❌ Rate limit exceeded (60 messages/minute), skipping message');
     return;
   }
   
   messageCount++;
 
-  // All conditions met!
-  seen.add(id);
-  saveProcessedIds(); // Persist to storage
+  // All conditions met! Mark as processed immediately
+  processedMessages.add(id);
   updateStats('totalProcessed');
+  
+  // Update last response time
+  lastResponseTime = Date.now();
   
   // Determine what message to send
   let messageToSend = text; // Default: echo original message
   
   if (STATE.customMessage && STATE.customMessage.trim()) {
-    // Use custom message if set
     messageToSend = STATE.customMessage;
-    debugLog('🔍 Using custom message:', messageToSend);
-  } else {
-    debugLog('🔍 Echoing original message:', messageToSend);
   }
   
   // Process message for voice rotation
-  messageToSend = processMessage(messageToSend);
-  debugLog('🔍 After voice processing:', messageToSend);
-  
-  debugLog('🎉 ALL CONDITIONS MET! Sending message:', messageToSend, 'from:', username);
-  
-  // Add to queue
-  chrome.runtime.sendMessage({
-    type: 'ADD_TO_QUEUE',
-    message: messageToSend,
-    messageType: 'auto'
-  });
+  messageToSend = processMessage(messageToSend, 'responder');
   
   const delay = 200 + Math.floor(Math.random() * 400);
-  debugLog('🔍 Send delay:', delay + 'ms');
   
   setTimeout(() => { 
     sendMessage(messageToSend).then(success => {
       if (success) {
         updateStats('totalReplies');
         updateStats('successCount');
-        debugLog('🎉 Message sent successfully!');
-      } else {
-        debugLog('❌ Message send failed!');
       }
     });
   }, delay);
 }
 
-// Observe the chat list
-let observerStarted = false;
+// Start observer
 function startObserver() {
   if (observerStarted) {
-    debugLog('⚠️ Observer already started, skipping');
     return;
   }
   
   const root = document.body;
+  if (!root) {
+    return;
+  }
+  
   const obs = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const n of m.addedNodes) {
         if (!(n instanceof HTMLElement)) continue;
 
-        // Direct message nodes often carry data-index
-        if (n.hasAttribute && n.hasAttribute('data-index')) handleMessageNode(n);
+        // Add a small delay to ensure DOM is fully updated
+        setTimeout(() => {
+          // Double check extension is still enabled
+          if (!STATE.enabled || !observerStarted) return;
 
-        // Scan children that look like messages
-        n.querySelectorAll('div[data-index]').forEach(el => handleMessageNode(el));
+          // Direct message nodes often carry data-index
+          if (n.hasAttribute && n.hasAttribute('data-index')) handleMessageNode(n);
 
-        // Fallback selector
-        if (n.querySelector && n.querySelector('button[title]') && n.querySelector('span.font-normal')) {
-          handleMessageNode(n);
-        }
+          // Scan children that look like messages
+          n.querySelectorAll('div[data-index]').forEach(el => handleMessageNode(el));
+
+          // Fallback selector
+          if (n.querySelector && n.querySelector('button[title]') && n.querySelector('span.font-normal')) {
+            handleMessageNode(n);
+          }
+        }, 50); // 50ms delay
       }
     }
   });
-  if (root) {
-    obs.observe(root, { childList: true, subtree: true });
-    observerStarted = true;
-    debugLog('✅ MutationObserver started successfully');
-  } else {
-    debugLog('❌ Root element not found for MutationObserver');
+  
+  obs.observe(root, { childList: true, subtree: true });
+  observerStarted = true;
+  currentObserver = obs;
+}
+
+// Stop observer
+function stopObserver() {
+  if (currentObserver) {
+    currentObserver.disconnect();
+    currentObserver = null;
   }
+  observerStarted = false;
+  processedMessages.clear();
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startObserver);
-} else {
-  startObserver();
-}
-
-// Helper functions for debugging (exposed globally after DOM is ready)
-setTimeout(() => {
-  // Helper function for users to check extension state manually
-  window.checkKickAutoReplyState = function() {
-    console.clear();
-    debugLog('🔍 KICK AUTO REPLY DEBUG CHECK');
-    debugState();
-    
-    // Check if we can find chat input
-    const input = getChatInput();
-    debugLog('Chat input element found:', !!input);
-    if (input) {
-      debugLog('Chat input element:', input);
-      debugLog('Chat input classes:', input.className);
-    }
-    
-    // Check if we can find send button
-    const btn = getSendButton();
-    debugLog('Send button found:', !!btn);
-    if (btn) {
-      debugLog('Send button element:', btn);
-    }
-    
-    // Check recent messages
-    const recentMessages = document.querySelectorAll('div[data-index]');
-    debugLog('Recent message elements found:', recentMessages.length);
-    
-    return {
+// Listen for state updates from background or popup
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Handle ping requests to test connection
+  if (msg && msg.type === "PING") {
+    sendResponse({ 
+      status: 'ready', 
+      timestamp: Date.now(),
+      contentScriptReady: true,
       enabled: STATE.enabled,
-      whitelist: STATE.whitelist,
-      blacklistedWords: STATE.blacklistedWords,
-      chatInputFound: !!input,
-      sendButtonFound: !!btn,
-      recentMessagesCount: recentMessages.length
-    };
-  };
-
-  // Helper function to test message processing manually
-  window.testKickAutoReplyMessage = function(username, message) {
-    debugLog('🧪 TESTING MESSAGE MANUALLY');
-    debugLog('Test username:', username);
-    debugLog('Test message:', message);
-    
-    if (!STATE.enabled) {
-      debugLog('❌ Extension is disabled');
-      return false;
-    }
-    
-    const isWhitelisted = STATE.whitelist.includes(username.toLowerCase());
-    debugLog('Is whitelisted:', isWhitelisted);
-    
-    if (!isWhitelisted) {
-      debugLog('❌ Username not in whitelist');
-      return false;
-    }
-    
-    if (!message.startsWith('!')) {
-      debugLog('❌ Message does not start with !');
-      return false;
-    }
-    
-    if (containsBlacklistedWords(message)) {
-      debugLog('❌ Message contains blacklisted words');
-      return false;
-    }
-    
-    debugLog('✅ All conditions met, would send message:', message);
+      whitelist: STATE.whitelist
+    });
     return true;
-  };
+  }
   
-  // Force state check function
-  window.forceStateCheck = function() {
-    console.clear();
-    debugLog('🔍 FORCE STATE CHECK');
-    debugLog('Current STATE object:', STATE);
-    debugLog('Extension enabled:', STATE.enabled);
-    debugLog('Whitelist:', STATE.whitelist);
-    debugLog('Blacklisted words:', STATE.blacklistedWords);
-    debugLog('Include subscribers:', STATE.includeSubscribers);
-    debugLog('Custom message:', STATE.customMessage);
-    debugLog('Voice rotation enabled:', STATE.voiceRotationEnabled);
-    
-    // Test a fake message
-    console.log('--- Testing with fake message ---');
-    if (STATE.enabled && STATE.whitelist.length > 0) {
-      const testUsername = STATE.whitelist[0];
-      console.log(`Testing with username: "${testUsername}"`);
-      console.log(`Would respond to: "${testUsername}: !test message"`);
+  // Handle master state changes
+  if (msg && msg.type === "MASTER_STATE_CHANGE") {
+    if (!msg.enabled) {
+      stopObserver();
     } else {
-      console.log('❌ Extension disabled or no whitelist configured');
+      startObserver();
+    }
+    sendResponse({status: 'master_state_updated'});
+    return true;
+  }
+  
+  if (msg && msg.type === "STATE" && msg.payload) {
+    STATE = {
+      ...STATE,
+      ...msg.payload,
+      enabled: msg.payload.enabled !== undefined ? msg.payload.enabled : STATE.enabled,
+      whitelist: (msg.payload.whitelist || []).map(s => String(s).toLowerCase().slice(0, 50)),
+      blacklistedWords: (msg.payload.blacklistedWords || []).map(s => String(s).toLowerCase().slice(0, 50)),
+      channelRestriction: String(msg.payload.channelRestriction || '').slice(0, 100),
+      responderInterval: parseInt(msg.payload.responderInterval) || STATE.responderInterval || 30,
+    };
+    
+    // Start/stop observer based on enabled state
+    if (STATE.enabled && !observerStarted) {
+      startObserver();
+    } else if (!STATE.enabled && observerStarted) {
+      stopObserver();
+    }
+  }
+  
+  if (msg && msg.type === "SEND_REPEATER_MESSAGE") {
+    // Check channel restriction
+    if (!isChannelAllowed()) {
+      if (sendResponse) {
+        sendResponse({ success: false, error: 'Channel restriction: not allowed on this channel' });
+      }
+      return true;
     }
     
-    return STATE;
-  };
-  
-  debugLog('Debug helper functions loaded. Try: checkKickAutoReplyState() or forceStateCheck()');
-}, 1000);
+    let processedMessage = processMessage(msg.message, 'repeater');
+    
+    sendMessage(processedMessage).then(success => {
+      if (success) {
+        updateStats('totalRepeater');
+        updateStats('successCount');
+        
+        if (sendResponse) {
+          sendResponse({ success: true, message: 'Message sent successfully' });
+        }
+      } else {
+        if (sendResponse) {
+          sendResponse({ success: false, error: 'Message send failed' });
+        }
+      }
+    }).catch(error => {
+      if (sendResponse) {
+        sendResponse({ success: false, error: error.toString() });
+      }
+    });
+    return true;
+  }
+});
 
-// Add periodic state logging to help debug issues - using managed interval
-if (typeof window !== 'undefined' && window.intervalManager) {
-  window.intervalManager.setInterval('debug-logging', () => {
+// Load initial state and start observer
+chrome.storage.local.get(["enabled", "whitelist", "blacklistedWords", "customMessage", "includeSubscribers", "voiceRotationRepeater", "voiceRotationResponder", "voiceMode", "selectedVoices", "customVoices", "channelRestriction", "responderInterval"], (cfg) => {
+  try {
+    STATE.enabled = Boolean(cfg.enabled);
+    STATE.whitelist = Array.isArray(cfg.whitelist)
+      ? cfg.whitelist.map(s => String(s).toLowerCase())
+      : [];
+    STATE.blacklistedWords = Array.isArray(cfg.blacklistedWords)
+      ? cfg.blacklistedWords.map(s => String(s).toLowerCase())
+      : [];
+    STATE.customMessage = String(cfg.customMessage || '');
+    STATE.includeSubscribers = Boolean(cfg.includeSubscribers);
+    STATE.voiceRotationRepeater = Boolean(cfg.voiceRotationRepeater);
+    STATE.voiceRotationResponder = Boolean(cfg.voiceRotationResponder);
+    STATE.voiceMode = String(cfg.voiceMode || 'random');
+    STATE.selectedVoices = Array.isArray(cfg.selectedVoices) ? cfg.selectedVoices : ['duke', 'trump', 'spongebob'];
+    STATE.customVoices = Array.isArray(cfg.customVoices) ? cfg.customVoices : [];
+    STATE.channelRestriction = String(cfg.channelRestriction || '');
+    STATE.responderInterval = parseInt(cfg.responderInterval) || 30;
+    
+    // Start observer if enabled
     if (STATE.enabled) {
-      debugLog('🔄 Periodic check - Extension enabled, Channel restriction:', STATE.channelRestriction || 'none');
-      debugLog('🔄 Current channel:', currentChannel, 'Allowed:', isChannelAllowed());
-      debugLog('🔄 Processed IDs loaded:', seenLoaded, 'Count:', seen.size);
+      startObserver();
     }
-  }, 30000);
-} else {
-  // Fallback
-  setInterval(() => {
-    if (STATE.enabled) {
-      debugLog('🔄 Periodic check - Extension enabled, Channel restriction:', STATE.channelRestriction || 'none');
-      debugLog('🔄 Current channel:', currentChannel, 'Allowed:', isChannelAllowed());
-      debugLog('🔄 Processed IDs loaded:', seenLoaded, 'Count:', seen.size);
-    }
-  }, 30000);
-}
+    
+  } catch (error) {
+    STATE.enabled = false;
+    STATE.whitelist = [];
+    STATE.blacklistedWords = [];
+  }
+});

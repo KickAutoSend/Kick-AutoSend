@@ -62,6 +62,27 @@ Automate Kick commands and regular messages in rounds with customizable interval
 2. Open Chrome → `chrome://extensions/` → Enable "Developer mode"
 3. Click "Load unpacked" and select the extension folder
 
+### 🛠️ Building for Production
+
+**Windows:**
+```bash
+# Run the build script
+build.bat
+
+# Or manually with Node.js
+node build.js
+```
+
+**Other Platforms:**
+```bash
+# Run the build script
+node build.js
+```
+
+This will create:
+- `dist/` folder with unpacked extension
+- `kick-autosend-v1.0.4.zip` ready for Chrome Web Store upload
+
 ### 🎯 Quick Setup
 
 1. Open a Kick.com stream
@@ -70,6 +91,15 @@ Automate Kick commands and regular messages in rounds with customizable interval
 4. Enable the toggles and let Kick AutoSend handle the rest
 
 ## 📋 Recent Updates
+
+### v1.0.4 (Latest)
+- **Fixed**: Content script ready issues on initial AutoSend run
+- **Fixed**: AutoSend counter display and completion state
+- **Fixed**: Character counter real-time updates
+- **Fixed**: Channel restriction for responder functionality
+- **Fixed**: Duplicate message prevention after page refresh
+- **Improved**: Service worker resilience and error handling
+- **Removed**: Debug code and unnecessary force stop functionality
 
 ### v1.0.3
 - Enhanced UI with more compact windows and helpful tooltips

@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Kick AutoSend",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "Advanced Kick chat automation with voice rotation, message repeater, and smart reply features for streamers, moderators and viewers",
     "permissions": ["storage", "activeTab"],
     "content_security_policy": {

@@ -16,7 +16,7 @@ const THEMES = {
     title: 'Kick AutoSend',
     emoji: '⚡',
     defaultVoices: ['morgan', 'watson', 'joerogan', 'rock', 'arnold', 'samueljackson', 'kevinhart', 'snoop', 'jordan', 'willsmith', 'elon', 'billgates', 'lex', 'eddie', 'sketch'],
-    defaultCommands: ['!commands', '!voices', '!followage']
+    defaultCommands: []
   },
   fnv: {
     name: 'FNV Theme',
@@ -24,7 +24,7 @@ const THEMES = {
     title: 'FNV Sender 🌋',
     emoji: '🎮',
     defaultVoices: ['drphil', 'spongebob', '50cent', 'steve', 'duke'],
-    defaultCommands: ['!hit', '!stier', '!btier', '!ctier', '!dtier', '!voices', '!commands', '!hitormiss', '!grownman']
+    defaultCommands: []
   }
 };
 
@@ -117,16 +117,21 @@ const elements = {
   // Advanced tab additions
   channelRestriction: document.getElementById('channelRestriction'),
   messagesLeft: document.getElementById('messagesLeft'),
-
-  // Tab indicators
-  repeaterIndicator: document.getElementById('repeater-indicator'),
-  responderIndicator: document.getElementById('responder-indicator'),
-  voicesIndicator: document.getElementById('voices-indicator'),
-  commandflageIndicator: document.getElementById('commandflage-indicator'),
-
-  // Common
+  
+  // Save buttons
   save: document.getElementById('save'),
+  saveResponder: document.getElementById('saveResponder'),
+  saveVoices: document.getElementById('saveVoices'),
+  
+  // Status
   status: document.getElementById('status'),
+  
+  // Indicators
+  repeaterIndicator: document.getElementById('repeaterIndicator'),
+  responderIndicator: document.getElementById('responderIndicator'),
+  voicesIndicator: document.getElementById('voicesIndicator'),
+  
+  // Tooltips
   tooltipsEnabled: document.getElementById('tooltipsEnabled')
 };
 
@@ -139,7 +144,7 @@ const DEFAULT_SETTINGS = {
   includeSubscribers: false,
   responderAllowCommands: false,
   repeaterEnabled: false,
-  repeaterMessage: '!obama hello everyone!',
+  repeaterMessage: '',
   interval: 90,
   maxCount: 0,
   voiceRotationEnabled: false, // Legacy setting, will be migrated
@@ -244,7 +249,6 @@ function applyTheme(themeName) {
   if (!hasCustomSelection) {
     currentSettings.selectedVoices = [...theme.defaultVoices.slice(0, 5)]; // Use first 5 default voices
     updateVoiceSelection();
-    console.log(`Applied theme ${theme.name} with default voices:`, currentSettings.selectedVoices);
   }
 
   // Only update commandflage commands when switching themes if they're empty
@@ -254,10 +258,6 @@ function applyTheme(themeName) {
   
   // Always update placeholder to show theme-appropriate defaults
   elements.commandflageCommands.placeholder = theme.defaultCommands.join(', ');
-  
-  console.log(`Applied theme ${theme.name} with default commands:`, currentSettings.commandflageCommands);
-  
-  console.log(`Applied ${theme.name}`);
 }
 
 // Tab switching functionality
@@ -632,6 +632,11 @@ function loadSettings() {
     loadStats();
     updateAdvancedDisplay();
     updateAllCounters();
+    
+    // Ensure repeater message counter is updated with correct max limit
+    const maxChars = parseInt(elements.maxCharLimit?.value) || 150;
+    updateCharCounter(elements.repeaterMessage, elements.repeaterCounter, maxChars);
+    
     updatePresetDisplay(); // Load presets
     updateStatsDisplay();
     applyTheme(currentSettings.currentTheme || 'kick');
@@ -659,6 +664,9 @@ function saveSettings() {
   const originalText = saveButton.textContent;
   saveButton.textContent = 'Saving...';
   saveButton.disabled = true;
+  
+
+
   
   // Collect and sanitize current values
   currentSettings.enabled = Boolean(elements.enabled.checked);
@@ -730,26 +738,32 @@ function saveSettings() {
   
   // Save to storage
   chrome.storage.local.set(currentSettings, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error saving settings:', chrome.runtime.lastError);
+      showStatus('Error saving settings', 'error');
+    } else {
+
+      showStatus('Settings saved!', 'success');
+      updateAllTabIndicators(); // Update indicators after saving
+      
+      // Notify content scripts
+      chrome.tabs.query({ url: ["https://kick.com/*", "https://*.kick.com/*"] }, (tabs) => {
+        tabs.forEach(tab => {
+          if (tab.id) {
+            chrome.tabs.sendMessage(tab.id, { 
+              type: "STATE", 
+              payload: currentSettings 
+            }, () => {
+              void chrome.runtime.lastError;
+            });
+          }
+        });
+      });
+    }
+    
     // Reset button state
     saveButton.textContent = originalText;
     saveButton.disabled = false;
-    
-    showStatus('Settings saved!', 'success');
-    updateAllTabIndicators(); // Update indicators after saving
-    
-    // Notify content scripts
-    chrome.tabs.query({ url: ["https://kick.com/*", "https://*.kick.com/*"] }, (tabs) => {
-      tabs.forEach(tab => {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, { 
-            type: "STATE", 
-            payload: currentSettings 
-          }, () => {
-            void chrome.runtime.lastError;
-          });
-        }
-      });
-    });
   });
 }
 
@@ -910,9 +924,9 @@ function updateExtensionBadge(isEnabled) {
       chrome.action.setBadgeText({text: ''});  // No badge - greyed icon is enough
       chrome.action.setTitle({title: 'Kick AutoSend - Disabled'});
     }
-  } catch (error) {
-    console.log('Badge update failed:', error);
-  }
+      } catch (error) {
+      // Silent error handling for production
+    }
 }
 
 function updateMasterState() {
@@ -1063,7 +1077,10 @@ function updateAllCounters() {
   
   // Save commandflage commands to storage when they change
   if (elements.commandflageCommands) {
-    const commands = elements.commandflageCommands.value;
+    const commands = elements.commandflageCommands.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
     chrome.storage.local.set({ commandflageCommands: commands });
   }
 }
@@ -1080,7 +1097,7 @@ function updateTooltipVisibility() {
     }
   });
   
-  console.log(`Tooltips ${tooltipsEnabled ? 'enabled' : 'disabled'} for ${tooltipLabels.length} labels`);
+
 }
 
 // Queue management functions
@@ -1117,18 +1134,18 @@ function updateQueueStatus(id, status, error = null) {
 
 function updateQueueDisplay() {
   // Queue display removed - this function is kept for compatibility
-  console.log('Queue display updated:', messageQueue.length, 'items');
+
 }
 
 function clearQueue() {
   // Queue functionality removed - keeping for compatibility
   messageQueue = [];
-  console.log('Queue cleared');
+
 }
 
 function retryFailedMessages() {
   // Queue functionality removed - keeping for compatibility
-  console.log('Retry failed messages called');
+
 }
 
 // Preset management functions
@@ -1173,12 +1190,11 @@ function savePreset() {
 }
 
 function loadPreset(presetName) {
-  console.log('Loading preset:', presetName);
-  console.log('Available presets:', currentSettings.messagePresets);
+
   
   const preset = currentSettings.messagePresets.find(p => p.name === presetName);
   if (preset) {
-    console.log('Found preset:', preset);
+
     elements.repeaterMessage.value = preset.message;
     
     // Trigger input event to update character counter
@@ -1191,7 +1207,7 @@ function loadPreset(presetName) {
     trackPresetUsage(preset.name);
     
     showStatus(`Loaded preset: ${preset.name}`, 'success');
-    console.log('Preset loaded successfully');
+
   } else {
     console.error('Preset not found:', presetName);
     showStatus(`Preset "${presetName}" not found`, 'error');
@@ -1410,10 +1426,16 @@ function startRepeaterWithConnection(message, interval, maxCount) {
           console.error('Error starting service worker repeater:', chrome.runtime.lastError.message);
           showStatus('Error starting repeater: ' + chrome.runtime.lastError.message, 'error');
         } else {
-          console.log('Service worker repeater started successfully');
+      
           
           // Start countdown display
           startCountdown(interval);
+          
+          // Account for the initial message that was sent immediately
+          messagesSent = 1;
+          
+          // Update messages left display immediately
+          updateMessageCounter();
           
           // Update UI
           if (elements.startRepeater) {
@@ -1431,60 +1453,47 @@ function startRepeaterWithConnection(message, interval, maxCount) {
 }
 
 function stopRepeater() {
-  console.log('🛑 stopRepeater() called in popup');
-  
-  // Stop service worker repeater
-  chrome.runtime.sendMessage({
-    type: 'STOP_REPEATER'
-  }, (response) => {
+  // Stop the service worker repeater
+  chrome.runtime.sendMessage({ type: 'STOP_REPEATER' }, () => {
     if (chrome.runtime.lastError) {
       console.error('❌ Error stopping service worker repeater:', chrome.runtime.lastError.message);
-    } else {
-      console.log('✅ Service worker repeater stopped successfully:', response);
     }
   });
   
-  // Stop local intervals
-  if (repeaterInterval) {
-    clearInterval(repeaterInterval);
-    repeaterInterval = null;
-  }
-  
-  if (repeaterTimeoutId) {
-    clearTimeout(repeaterTimeoutId);
-    repeaterTimeoutId = null;
-  }
-  
+  // Clear countdown interval
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
   
+
+  
   // Reset UI
   if (elements.startRepeater) {
     elements.startRepeater.disabled = false;
-    elements.startRepeater.textContent = 'Save and Start';
+    elements.startRepeater.textContent = 'Save & Start';
   }
   if (elements.stopRepeater) elements.stopRepeater.disabled = true;
-  updateAllTabIndicators(); // Update status indicators
   
-  // Clear countdown display
+  // Reset display
   if (elements.nextMessage) elements.nextMessage.textContent = '--';
   if (elements.messagesLeft) elements.messagesLeft.textContent = '--';
   
+  // Reset message counter
+  messagesSent = 0;
+  
   showStatus('AutoSend stopped', 'success');
-  console.log('AutoSend stopped. Total messages sent:', messagesSent);
+
 }
 
 // Test if content script is ready with retry logic
 function testContentScriptConnection(tabId, callback, retryCount = 0) {
-  const maxRetries = 3;
-  const retryDelay = 1000; // 1 second
+  const maxRetries = 15;
+  const retryDelay = 100;
   
   chrome.tabs.sendMessage(tabId, { type: 'PING' }, (response) => {
     if (chrome.runtime.lastError) {
       if (retryCount < maxRetries) {
-        console.log(`Content script not ready, retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
         setTimeout(() => {
           testContentScriptConnection(tabId, callback, retryCount + 1);
         }, retryDelay);
@@ -1492,7 +1501,19 @@ function testContentScriptConnection(tabId, callback, retryCount = 0) {
         callback(false, `Content script not ready after ${maxRetries} attempts. Try refreshing the page.`);
       }
     } else {
-      callback(true, response);
+      // Check if content script reports itself as ready
+      if (response && response.contentScriptReady) {
+        callback(true, response);
+      } else {
+        // Content script responded but not ready yet
+        if (retryCount < maxRetries) {
+          setTimeout(() => {
+            testContentScriptConnection(tabId, callback, retryCount + 1);
+          }, retryDelay);
+        } else {
+          callback(false, 'Content script responded but not ready after multiple attempts');
+        }
+      }
     }
   });
 }
@@ -1504,11 +1525,22 @@ function ensureContentScriptReady(tabId, callback) {
     if (isReady) {
       callback(true, result);
     } else {
-      // Content script should be auto-injected by manifest.json
-      // Just wait a bit and test again
-      setTimeout(() => {
-        testContentScriptConnection(tabId, callback);
-      }, 1000);
+      // Try to inject content script manually as fallback
+      if (chrome.scripting && chrome.scripting.executeScript) {
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['content.js']
+        }, () => {
+          setTimeout(() => {
+            testContentScriptConnection(tabId, callback);
+          }, 500);
+        });
+      } else {
+        // Wait a bit and test again without manual injection
+        setTimeout(() => {
+          testContentScriptConnection(tabId, callback);
+        }, 500);
+      }
     }
   });
 }
@@ -1517,8 +1549,6 @@ function sendRepeaterMessage(message) {
   // Process message for voice rotation
   const processedMessage = processMessage(message, 'repeater');
   
-  console.log('🔄 Attempting to send repeater message:', processedMessage);
-  
   // Send to content script
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
     if (tabs && tabs[0]) {
@@ -1526,22 +1556,16 @@ function sendRepeaterMessage(message) {
       
       // Check if tab is on Kick.com
       if (!tab.url || !tab.url.includes('kick.com')) {
-        console.error('❌ Not on Kick.com page:', tab.url);
         showStatus('Please navigate to a Kick.com channel to use the repeater', 'error');
         return;
       }
       
-      console.log('📤 Testing connection to tab:', tab.id, 'URL:', tab.url);
-      
       // Test connection first
       ensureContentScriptReady(tab.id, (isReady, result) => {
         if (!isReady) {
-          console.error('❌ Content script not ready:', result);
           showStatus('Content script error: ' + result, 'error');
           return;
         }
-        
-        console.log('✅ Content script ready, sending message');
         
         try {
           chrome.tabs.sendMessage(tab.id, {
@@ -1549,51 +1573,75 @@ function sendRepeaterMessage(message) {
             message: processedMessage
           }, (response) => {
             if (chrome.runtime.lastError) {
-              console.error('❌ Error sending repeater message:', chrome.runtime.lastError.message);
               showStatus('Error sending repeater message: ' + chrome.runtime.lastError.message, 'error');
             } else {
-              console.log('✅ AutoSend message sent successfully:', response);
               // Update stats only on successful send
               updateStats('totalRepeater');
+              
+              // Message counter is now handled by service worker
+              // No need to increment here as service worker will send update
             }
           });
         } catch (error) {
-          console.error('❌ Exception sending message:', error);
-          showStatus('Error sending message: ' + error.message, 'error');
+          showStatus('Error sending repeater message: ' + error.message, 'error');
         }
       });
     } else {
-      console.error('❌ No active tab found for sending repeater message');
       showStatus('No active tab found - make sure you\'re on a Kick.com page', 'error');
     }
   });
 }
 
 function startCountdown(interval) {
-  repeaterCountdown = interval;
-  updateCountdownDisplay();
+  let countdown = interval;
+  
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+  }
   
   countdownInterval = setInterval(() => {
-    repeaterCountdown--;
-    updateCountdownDisplay();
-    
-    if (repeaterCountdown <= 0) {
-      repeaterCountdown = interval; // Reset for next cycle
+    // Check if max count has been reached
+    const maxCount = parseInt(elements.maxCount.value) || 0;
+    if (maxCount > 0 && messagesSent >= maxCount) {
+      // Max count reached, stop countdown and show complete
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      if (elements.nextMessage) {
+        elements.nextMessage.textContent = 'Complete';
+      }
+      if (elements.messagesLeft) {
+        elements.messagesLeft.textContent = 'Complete';
+      }
+      return;
     }
+    
+    countdown--;
+    
+    if (countdown <= 0) {
+      // Reset countdown for next message
+      countdown = interval;
+    }
+    
+    // Update display
+    if (elements.nextMessage) {
+      elements.nextMessage.textContent = countdown > 0 ? `${countdown}s` : 'Sending...';
+    }
+    
+    // Update messages left display
+    updateMessageCounter();
   }, 1000);
-}
-
-function updateCountdownDisplay() {
+  
+  // Initial display update
   if (elements.nextMessage) {
-    elements.nextMessage.textContent = repeaterCountdown > 0 ? `${repeaterCountdown}s` : 'Sending...';
+    elements.nextMessage.textContent = `${countdown}s`;
   }
   
-  const maxCount = parseInt(elements.maxCount.value) || 0;
-  if (elements.messagesLeft && maxCount > 0) {
-    const remaining = Math.max(0, maxCount - messagesSent);
-    elements.messagesLeft.textContent = remaining > 0 ? `${remaining} left` : 'Complete';
-  }
+  updateMessageCounter();
 }
+
+
+
+
 
 // Commaflage functions
 function startCommandflage() {
@@ -1639,13 +1687,7 @@ function startCommaflageWithConnection(commands, randomize, rounds, maxCommands,
   // Get interval from UI
   const interval = parseInt(elements.commandInterval.value) || 3;
   
-  console.log('Starting commaflage with config:', {
-    commands: commands,
-    randomize: randomize,
-    rounds: rounds,
-    maxCommands: maxCommands,
-    interval: interval
-  });
+
   
   // Send configuration to service worker to start background commaflage
   chrome.runtime.sendMessage({
@@ -1663,7 +1705,7 @@ function startCommaflageWithConnection(commands, randomize, rounds, maxCommands,
       console.error('Error starting service worker commaflage:', chrome.runtime.lastError.message);
       showStatus('Error starting commaflage: ' + chrome.runtime.lastError.message, 'error');
     } else {
-      console.log('Service worker commaflage started successfully');
+
       
       // Update UI
       if (elements.startCommandflage) {
@@ -1686,7 +1728,7 @@ function stopCommandflage() {
     if (chrome.runtime.lastError) {
       console.error('Error stopping service worker commaflage:', chrome.runtime.lastError.message);
     } else {
-      console.log('Service worker commaflage stopped successfully');
+
     }
   });
   
@@ -1699,14 +1741,14 @@ function stopCommandflage() {
   updateAllTabIndicators(); // Update status indicators
   
   showStatus('Commaflage stopped', 'success');
-  console.log('Commaflage stopped');
+
 }
 
 function checkCommaflageCompletion() {
   // Check if commaflage has completed
   chrome.runtime.sendMessage({ type: 'GET_COMMAFLAGE_STATUS' }, (response) => {
     if (chrome.runtime.lastError) {
-      console.log('Error checking commaflage status:', chrome.runtime.lastError.message);
+
       return;
     }
     
@@ -1725,7 +1767,7 @@ function checkCommaflageCompletion() {
 }
 
 function handleCommaflageCompletion(message) {
-  console.log('Commaflage completed:', message);
+
   
   // Reset UI to initial state
   if (elements.startCommandflage) {
@@ -1759,7 +1801,10 @@ function initEventListeners() {
   elements.whitelist.addEventListener('input', () => updateCharCounter(elements.whitelist, elements.whitelistCounter));
   elements.customMessage.addEventListener('input', () => updateCharCounter(elements.customMessage, elements.messageCounter, 500));
   elements.repeaterMessage.addEventListener('input', () => {
-    const maxChars = currentSettings.useAdvancedLimits ? currentSettings.maxCharLimit : 150;
+    setTimeout(updateAllTabIndicators, 100);
+    
+    // Update character counter with current max limit
+    const maxChars = parseInt(elements.maxCharLimit?.value) || 150;
     updateCharCounter(elements.repeaterMessage, elements.repeaterCounter, maxChars);
   });
   elements.blacklistedWords.addEventListener('input', () => {
@@ -1841,6 +1886,8 @@ function initEventListeners() {
   
   // Save button
   elements.save.addEventListener('click', saveSettings);
+  elements.saveResponder.addEventListener('click', saveSettings);
+  elements.saveVoices.addEventListener('click', saveSettings);
   
   // Tooltip toggle
   elements.tooltipsEnabled.addEventListener('change', () => {
@@ -1859,7 +1906,7 @@ function initEventListeners() {
   // Special handling for AutoSend toggle - stop AutoSend when disabled
   elements.repeaterEnabled.addEventListener('change', () => {
     if (!elements.repeaterEnabled.checked) {
-      console.log('🛑 AutoSend Mode toggled OFF - stopping AutoSend');
+    
       stopRepeater();
     }
     saveSettings();
@@ -1868,7 +1915,7 @@ function initEventListeners() {
   
   // Master toggle event listener
   elements.masterEnabled.addEventListener('change', () => {
-    console.log('🔄 Master extension toggle changed:', elements.masterEnabled.checked);
+
     saveSettings();
     updateMasterState();
     updateAllTabIndicators();
@@ -1883,32 +1930,35 @@ function initEventListeners() {
     setTimeout(updateAllTabIndicators, 100);
   });
   
+  // Add event listener for maxCharLimit to update counter in real-time
+  elements.maxCharLimit.addEventListener('input', () => {
+    const maxChars = parseInt(elements.maxCharLimit.value) || 150;
+    updateCharCounter(elements.repeaterMessage, elements.repeaterCounter, maxChars);
+  });
 
 }
 
-// Listen for messages from content script and service worker
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'UPDATE_STATS') {
-    updateStats(message.stat, message.value || 1);
+// Listen for messages from service worker
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'REPEATER_MESSAGE_SENT') {
+    messagesSent = message.messagesSent;
+    updateMessageCounter();
   }
   
-  if (message.type === 'QUEUE_UPDATE') {
-    updateQueueStatus(message.queueId, message.status, message.error);
+  if (message.type === 'REPEATER_MAX_COUNT_REACHED') {
+    messagesSent = message.messagesSent;
+    if (elements.messagesLeft) { elements.messagesLeft.textContent = 'Complete'; }
+    if (elements.nextMessage) { elements.nextMessage.textContent = 'Complete'; }
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   }
   
-  if (message.type === 'ADD_TO_QUEUE') {
-    addToQueue(message.message, message.messageType, 'pending');
+  if (message.type === 'COMMAFLAGE_COMPLETED') {
+    handleCommaflageCompletion(message);
   }
 });
 
 // Debug function for checking repeater status
 window.checkRepeaterStatus = function() {
-  console.log('🔍 REPEATER STATUS CHECK');
-  console.log('Interval active:', !!repeaterInterval);
-  console.log('Pending timeouts:', pendingRepeaterTimeouts.size);
-  console.log('Pending timeout IDs:', Array.from(pendingRepeaterTimeouts));
-  console.log('Start button disabled:', elements.startRepeater.disabled);
-  console.log('Stop button disabled:', elements.stopRepeater.disabled);
   return {
     intervalActive: !!repeaterInterval,
     pendingTimeouts: pendingRepeaterTimeouts.size,
@@ -1954,3 +2004,30 @@ window.addEventListener('beforeunload', () => {
     }
   }
 });
+
+// Update message counter display
+function updateMessageCounter() {
+  const maxCount = parseInt(elements.maxCount.value) || 0;
+  if (elements.messagesLeft && maxCount > 0) {
+    const remaining = Math.max(0, maxCount - messagesSent);
+    
+    if (remaining > 0) {
+      elements.messagesLeft.textContent = `${remaining} left`;
+    } else {
+      // Max count reached - show complete
+      elements.messagesLeft.textContent = 'Complete';
+      if (elements.nextMessage) {
+        elements.nextMessage.textContent = 'Complete';
+      }
+      
+      // Clear countdown interval if it's still running
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }
+  } else if (elements.messagesLeft) {
+    // No max count set or invalid value
+    elements.messagesLeft.textContent = '--';
+  }
+}

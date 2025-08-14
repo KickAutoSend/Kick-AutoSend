@@ -117,7 +117,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   
   if (msg && msg.type === "STOP_REPEATER") {
-    console.log('📥 Received STOP_REPEATER message in service worker');
     stopServiceWorkerRepeater();
     sendResponse({ success: true });
     return true;
@@ -157,13 +156,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 function startServiceWorkerRepeater(config, tabId) {
-  console.log('Starting repeater in service worker:', config);
-  
   // Check if extension is globally enabled
   chrome.storage.local.get(['masterEnabled'], (settings) => {
     if (!settings.masterEnabled) {
-      console.log('🛑 Extension disabled - cannot start repeater');
       return;
+    }
+  });
+  
+  // Check channel restriction
+  chrome.storage.local.get(['channelRestriction'], (settings) => {
+    if (settings.channelRestriction && settings.channelRestriction.trim() !== '') {
+      // We'll check this in the content script when sending messages
     }
   });
   
@@ -184,11 +187,29 @@ function startServiceWorkerRepeater(config, tabId) {
   
   // Set up interval for subsequent messages
   repeaterInterval = setInterval(() => {
+    // Check if we've reached max count
     if (repeaterState.maxCount > 0 && repeaterState.messagesSent >= repeaterState.maxCount) {
       stopServiceWorkerRepeater();
+      
+      // Notify popup that max count was reached
+      chrome.runtime.sendMessage({
+        type: 'REPEATER_MAX_COUNT_REACHED',
+        messagesSent: repeaterState.messagesSent,
+        maxCount: repeaterState.maxCount
+      });
       return;
     }
-    sendRepeaterMessageFromServiceWorker();
+    
+    // Check if tab still exists before sending
+    chrome.tabs.get(repeaterState.tabId, (tab) => {
+      if (chrome.runtime.lastError || !tab) {
+        stopServiceWorkerRepeater();
+        return;
+      }
+      
+      // Send the message
+      sendRepeaterMessageFromServiceWorker();
+    });
   }, repeaterState.interval * 1000);
 }
 
@@ -196,13 +217,9 @@ function stopServiceWorkerRepeater() {
   if (repeaterInterval) {
     clearInterval(repeaterInterval);
     repeaterInterval = null;
-    console.log('✅ Service worker repeater interval cleared');
-  } else {
-    console.log('⚠️ No repeater interval to clear in service worker');
   }
   
   repeaterState.active = false;
-  console.log('🛑 AutoSend stopped in service worker. Total messages sent:', repeaterState.messagesSent);
 }
 
 function sendRepeaterMessageFromServiceWorker() {
@@ -222,14 +239,23 @@ function sendRepeaterMessageFromServiceWorker() {
       message: processedMessage
     }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error('Error sending repeater message from service worker:', chrome.runtime.lastError.message);
-        // Stop repeater if tab is no longer available
+        // Check if it's a connection error
         if (chrome.runtime.lastError.message.includes('Receiving end does not exist')) {
-          stopServiceWorkerRepeater();
+          // Don't stop the repeater, just skip this message and try again next time
+          return;
         }
+        
+        // For other errors, stop repeater
+        stopServiceWorkerRepeater();
       } else {
         repeaterState.messagesSent++;
-        console.log('Repeater message sent from service worker:', processedMessage);
+        
+        // Send message count update to popup
+        chrome.runtime.sendMessage({
+          type: 'REPEATER_MESSAGE_SENT',
+          messagesSent: repeaterState.messagesSent,
+          maxCount: repeaterState.maxCount
+        });
       }
     });
   });
@@ -266,14 +292,11 @@ function applyVoiceRotation(message, settings) {
   // Replace the voice command
   const processedMessage = message.replace(currentVoice, `!${nextVoice}`);
   
-  console.log(`🎵 Voice rotation (service worker): ${currentVoice} → !${nextVoice}`);
   return processedMessage;
 }
 
 // Commaflage functions
 function startServiceWorkerCommaflage(config, tabId) {
-  console.log('Starting commaflage in service worker:', config);
-  
   // Stop any existing commaflage
   stopServiceWorkerCommaflage();
   
@@ -282,9 +305,6 @@ function startServiceWorkerCommaflage(config, tabId) {
     .split(',')
     .map(cmd => cmd.trim())
     .filter(cmd => cmd.length > 0);
-  
-  console.log('Commaflage config received:', config);
-  console.log('Parsed messages:', commands);
   
   if (commands.length === 0) {
     console.error('No valid messages provided for commaflage');
@@ -304,8 +324,6 @@ function startServiceWorkerCommaflage(config, tabId) {
     commandQueue: [],
     currentCommandIndex: 0
   };
-  
-  console.log('Commaflage state initialized:', commaflageState);
   
   // Prepare command queue for first round
   prepareCommandQueue();
@@ -333,7 +351,6 @@ function stopServiceWorkerCommaflage(reason = 'stopped') {
   commaflageState.completionTime = Date.now();
   
   commaflageState.active = false;
-  console.log('Commaflage stopped in service worker. Total commands sent:', commaflageState.commandsSent);
 }
 
 function prepareCommandQueue() {
@@ -350,8 +367,6 @@ function prepareCommandQueue() {
   
   commaflageState.commandQueue = roundCommands;
   commaflageState.currentCommandIndex = 0;
-  
-  console.log('Command queue prepared for round', commaflageState.currentRound, ':', roundCommands);
 }
 
 function sendNextCommaflageCommand() {
@@ -359,7 +374,6 @@ function sendNextCommaflageCommand() {
   
   // Check if we've exceeded max commands
   if (commaflageState.maxCommands > 0 && commaflageState.commandsSent >= commaflageState.maxCommands) {
-    console.log('Commaflage: Max commands reached');
     stopServiceWorkerCommaflage('max commands reached');
     return;
   }
@@ -368,7 +382,6 @@ function sendNextCommaflageCommand() {
   if (commaflageState.currentCommandIndex >= commaflageState.commandQueue.length) {
     // Round complete
     if (commaflageState.rounds > 0 && commaflageState.currentRound >= commaflageState.rounds) {
-      console.log('Commaflage: All rounds complete');
       stopServiceWorkerCommaflage('all rounds completed');
       return;
     }
@@ -382,8 +395,6 @@ function sendNextCommaflageCommand() {
   const message = commaflageState.commandQueue[commaflageState.currentCommandIndex];
   commaflageState.currentCommandIndex++;
   
-  console.log('Sending commaflage message:', message, 'Type:', typeof message);
-  
   // Send message
   chrome.tabs.sendMessage(commaflageState.tabId, {
     type: 'SEND_REPEATER_MESSAGE', // Reuse the same message sending system
@@ -396,7 +407,6 @@ function sendNextCommaflageCommand() {
       }
     } else {
       commaflageState.commandsSent++;
-      console.log('Commaflage message sent:', message, 'Total sent:', commaflageState.commandsSent);
     }
   });
 }
